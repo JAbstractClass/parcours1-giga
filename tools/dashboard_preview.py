@@ -14,6 +14,7 @@ S = {"aufzug": False, "leds": True, "stopp": False, "weiche": 1, "hebel": 1,
 
 def status():
     s = dict(S); s["uptime"] = int(time.time() - START)
+    s["abrufe"] = s["uptime"] // 60 + 1; s["daten"] = s["abrufe"] * 8
     if S["aufzug"]:  # Stoppstelle taktet wie auf dem Giga
         s["stopp"] = int(time.time()) % 9 == 0
     return s

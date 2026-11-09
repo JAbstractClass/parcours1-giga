@@ -36,6 +36,12 @@ WiFiServer server(80);
 bool wlanOk = false;
 String otaUrl = "";           // gesetzt -> Update wird im naechsten loop ausgefuehrt
 String otaMeldung = "";
+// OTA-Speicher nur EINMAL einbinden: ein zweites begin() schlaegt mit Fehler -3 fehl
+Arduino_Portenta_OTA_QSPI* otaObj = nullptr;
+bool otaBereit = false;
+// Datenverbrauch des Giga (Nutzdaten der Antworten + Anzahl Abrufe)
+uint32_t datenBytes = 0, datenAbrufe = 0;
+mbed::Callback<void(const char*, uint32_t)> abrufZiel;
 String neuesteVersion = "";   // zuletzt auf GitHub gesehener Commit
 unsigned long letztePruefung = 0;
 bool erstePruefung = true;
@@ -88,7 +94,10 @@ void zeitSicherstellen() {
 // Rueckgabe: HTTP-Statuscode (200 = ok) oder negativer Fehlercode.
 int httpsAbruf(const String& url, mbed::Callback<void(const char*, uint32_t)> cbk) {
   zeitSicherstellen();
-  HttpsRequest* req = new HttpsRequest(WiFi.getNetwork(), ISRG_ROOT_X1_PEM, HTTP_GET, url.c_str(), cbk);
+  datenAbrufe++;
+  abrufZiel = cbk;   // ueber globale Variable, weil mbed::Callback nur kleine Lambdas aufnimmt
+  HttpsRequest* req = new HttpsRequest(WiFi.getNetwork(), ISRG_ROOT_X1_PEM, HTTP_GET, url.c_str(),
+                                       [](const char* b, uint32_t len) { datenBytes += len; abrufZiel(b, len); });
   HttpResponse* rsp = req->send(NULL, 0);
   int code;
   if (!rsp) {
@@ -141,13 +150,7 @@ void webSetup() {
   Serial.print("Weboberflaeche: http://"); Serial.println(WiFi.localIP());
 
   // pruefen, ob OTA moeglich ist
-  if (!Arduino_Portenta_OTA::isOtaCapable()) {
-    otaMeldung = "OTA nicht moeglich: Bootloader zu alt";
-  } else {
-    Arduino_Portenta_OTA_QSPI ota(QSPI_FLASH_FATFS_MBR, 2);
-    int e = (int)ota.begin();
-    otaMeldung = (e == 0) ? "" : "OTA-Speicher fehlt (Fehler " + String(e) + ")";
-  }
+  otaVorbereiten();
   if (otaMeldung.length()) Serial.println(otaMeldung); else Serial.println("OTA bereit");
   Serial.print("Firmware "); Serial.print(FW_VERSION); Serial.print(" vom "); Serial.println(FW_DATUM);
 }
@@ -177,6 +180,8 @@ String statusJson() {
   s += ",\"rssi\":";        s += String(WiFi.RSSI());
   s += ",\"github\":\""; s += neuesteVersion;
   s += "\",\"auto\":";     s += autoUpdate() ? "true" : "false";
+  s += ",\"daten\":";     s += String(datenBytes);
+  s += ",\"abrufe\":";    s += String(datenAbrufe);
   s += ",\"ota\":\"";     s += otaMeldung;
   s += "\"}";
   return s;
@@ -276,18 +281,24 @@ void webLoop() {
 }
 
 // ---------- OTA ----------
+void otaVorbereiten() {
+  if (otaBereit) return;
+  if (!Arduino_Portenta_OTA::isOtaCapable()) { otaMeldung = "OTA nicht moeglich: Bootloader zu alt"; return; }
+  if (!otaObj) otaObj = new Arduino_Portenta_OTA_QSPI(QSPI_FLASH_FATFS_MBR, 2);
+  int e = (int)otaObj->begin();
+  if (e != 0) { otaMeldung = "OTA-Speicher fehlt (Fehler " + String(e) + ")"; return; }
+  otaBereit = true;
+  otaMeldung = "";
+}
+
 void otaStart(const String& url) {
   allesStopp();
   Serial.print("OTA-Update von "); Serial.println(url);
   otaMeldung = "Update laeuft ...";
 
-  if (!Arduino_Portenta_OTA::isOtaCapable()) { otaMeldung = "OTA nicht moeglich: Bootloader zu alt"; Serial.println(otaMeldung); return; }
-
-  Arduino_Portenta_OTA_QSPI ota(QSPI_FLASH_FATFS_MBR, 2);
-  Arduino_Portenta_OTA::Error e = ota.begin();
-  if (e != Arduino_Portenta_OTA::Error::None) {
-    otaMeldung = "OTA-Speicher fehlt (Fehler " + String((int)e) + ")"; Serial.println(otaMeldung); return;
-  }
+  otaVorbereiten();
+  if (!otaBereit) { Serial.println(otaMeldung); return; }
+  Arduino_Portenta_OTA_QSPI& ota = *otaObj;
 
   unsigned long t0 = millis();
   int n;
@@ -312,7 +323,7 @@ void otaStart(const String& url) {
   }
   Serial.print(n); Serial.print(" Bytes in "); Serial.print((millis() - t0) / 1000.0); Serial.println(" s");
 
-  e = ota.update();
+  Arduino_Portenta_OTA::Error e = ota.update();
   if (e != Arduino_Portenta_OTA::Error::None) {
     otaMeldung = "Update fehlgeschlagen (Fehler " + String((int)e) + ")"; Serial.println(otaMeldung); return;
   }

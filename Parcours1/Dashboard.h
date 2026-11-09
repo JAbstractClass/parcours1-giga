@@ -5,564 +5,400 @@ static const char HTML_SEITE[] = R"DASH(<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#07090d">
 <title>Parcours 1</title>
 <style>
+/* Neutral wie Vercel/Geist, Farbe nur fuer Zustand: gruen = laeuft, rot = Stopp */
 :root{
-  --bg:#07090d;--bg2:#0c1017;--panel:rgba(20,25,34,.72);--panel-solid:#131820;
-  --line:rgba(255,255,255,.08);--line2:rgba(255,255,255,.14);
-  --text:#eef1f6;--muted:#8a93a3;--faint:#5b6474;
-  --accent:#5b8cff;--accent2:#9b6bff;--ok:#2fd27a;--warn:#ffb020;--danger:#ff4d5e;
-  --glow:rgba(91,140,255,.35);
-  --r:20px;--r-sm:14px;
-  --shadow:0 1px 0 rgba(255,255,255,.04) inset,0 20px 60px -20px rgba(0,0,0,.6);
-  --ease:cubic-bezier(.2,.8,.2,1);
-  color-scheme:dark;
+  --bg:#fafafa;--surface:#fff;--sub:#f4f4f5;--line:#e4e4e7;--line-strong:#d4d4d8;
+  --text:#09090b;--muted:#71717a;--faint:#a1a1aa;
+  --on:#16a34a;--on-bg:#dcfce7;--off:#d4d4d8;--stop:#dc2626;--stop-bg:#fef2f2;--warn:#ca8a04;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
 }
-/* helles Design nur auf Wunsch: <html data-theme="light"> */
-:root[data-theme="light"]{
-  --bg:#f3f5f9;--bg2:#e9edf4;--panel:rgba(255,255,255,.78);--panel-solid:#fff;
-  --line:rgba(15,23,42,.08);--line2:rgba(15,23,42,.14);
-  --text:#0d1320;--muted:#5d6779;--faint:#97a0b0;--glow:rgba(91,140,255,.22);
-  --shadow:0 1px 0 rgba(255,255,255,.8) inset,0 20px 50px -24px rgba(15,23,42,.25);color-scheme:light}
-*{box-sizing:border-box;margin:0}
-html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
-body{background:var(--bg);color:var(--text);font:15px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","Inter","Segoe UI",Roboto,system-ui,sans-serif;
-  -webkit-font-smoothing:antialiased;overflow-x:hidden;min-height:100vh}
-button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;-webkit-tap-highlight-color:transparent}
-.wrap{max-width:1120px;margin:0 auto;padding:0 20px}
-.mono{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
-
-/* Hintergrund: Raster + Lichtflecken */
-.bg{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden}
-.bg::before{content:"";position:absolute;inset:-2px;background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
-  background-size:56px 56px;mask-image:radial-gradient(ellipse 80% 60% at 50% 0%,#000 30%,transparent 75%);-webkit-mask-image:radial-gradient(ellipse 80% 60% at 50% 0%,#000 30%,transparent 75%);opacity:.6}
-.blob{position:absolute;border-radius:50%;filter:blur(80px);opacity:.55;will-change:transform}
-.blob.a{width:520px;height:520px;background:radial-gradient(circle,#3b6cff 0%,transparent 70%);top:-180px;left:-120px;animation:drift 18s ease-in-out infinite}
-.blob.b{width:460px;height:460px;background:radial-gradient(circle,#8a4dff 0%,transparent 70%);top:-120px;right:-140px;animation:drift 22s ease-in-out infinite reverse}
-.running .blob.a{background:radial-gradient(circle,#1fd178 0%,transparent 70%)}
-@keyframes drift{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(60px,40px) scale(1.1)}}
-
-/* Fortschrittsbalken beim Scrollen */
-#progress{position:fixed;top:0;left:0;height:2px;width:100%;transform-origin:0 50%;transform:scaleX(0);
-  background:linear-gradient(90deg,var(--accent),var(--accent2));z-index:60}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#09090b;--surface:#0f0f11;--sub:#18181b;--line:#27272a;--line-strong:#3f3f46;
+  --text:#fafafa;--muted:#a1a1aa;--faint:#71717a;
+  --on:#22c55e;--on-bg:rgba(34,197,94,.12);--off:#3f3f46;--stop:#ef4444;--stop-bg:rgba(239,68,68,.1);--warn:#eab308;
+}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Roboto,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+.num{font-variant-numeric:tabular-nums}
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px}
 
 /* Kopfzeile */
-header{position:sticky;top:0;z-index:50;transition:background .4s var(--ease),border-color .4s,backdrop-filter .4s}
-header .wrap{display:flex;align-items:center;gap:14px;height:68px;transition:height .4s var(--ease)}
-header.compact{background:color-mix(in srgb,var(--bg) 70%,transparent);backdrop-filter:saturate(180%) blur(18px);-webkit-backdrop-filter:saturate(180%) blur(18px);border-bottom:1px solid var(--line)}
-header.compact .wrap{height:56px}
-.logo{display:flex;align-items:center;gap:10px;font-weight:650;letter-spacing:-.01em}
-.mark{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;box-shadow:0 6px 20px -6px var(--glow)}
-.mark svg{width:16px;height:16px}
-.spacer{flex:1}
-.pill{display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 12px;border-radius:999px;border:1px solid var(--line2);background:var(--panel);font-size:13px;color:var(--muted);white-space:nowrap}
-.dot{width:8px;height:8px;border-radius:50%;background:var(--faint);position:relative;flex:none}
-.live .dot{background:var(--ok)}
-.live .dot::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:2px solid var(--ok);animation:ping 1.8s var(--ease) infinite}
-.off .dot{background:var(--danger)}
-@keyframes ping{0%{transform:scale(.6);opacity:.9}100%{transform:scale(1.8);opacity:0}}
-.chip{font-size:12px;padding:3px 8px;border-radius:6px;background:var(--line);color:var(--muted)}
-.hide-sm{display:inline-flex}
+header{position:sticky;top:0;z-index:10;background:var(--bg);border-bottom:1px solid var(--line)}
+header .wrap{height:56px;display:flex;align-items:center;gap:20px}
+.brand{font-weight:600;letter-spacing:-.01em}
+.brand span{color:var(--faint);font-weight:400;margin-left:8px}
+.grow{flex:1}
+.conn{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.conn i{width:6px;height:6px;border-radius:1px;background:var(--off)}
+.conn.ok i{background:var(--on)}
+.conn.bad i{background:var(--stop)}
+.btn{height:32px;padding:0 12px;border-radius:6px;border:1px solid var(--line-strong);background:var(--surface);font-size:13px;font-weight:500;display:inline-flex;align-items:center;gap:8px}
+.btn:hover{background:var(--sub)}
+.btn.stop{border-color:var(--stop);color:var(--stop)}
+.btn.stop:hover{background:var(--stop-bg)}
+.btn.primary{background:var(--text);color:var(--bg);border-color:var(--text)}
+.btn.primary:hover{opacity:.88}
+kbd{font:500 11px var(--mono);color:var(--faint);border:1px solid var(--line);border-radius:4px;padding:0 4px;line-height:16px}
 
-/* Hero */
-.hero{padding:56px 0 34px;position:relative}
-.eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
-.eyebrow b{color:var(--text);font-weight:600}
-h1{font-size:clamp(44px,8vw,96px);line-height:.98;letter-spacing:-.05em;font-weight:720;margin:18px 0 16px;color:var(--text)}
-.split span{color:var(--text)}
-h1 .state{display:inline-block;background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent;transition:filter .5s}
-.running h1 .state{background-image:linear-gradient(90deg,#2fd27a,#59e3c4)}
-.lead{font-size:clamp(16px,2vw,19px);color:var(--muted);max-width:560px}
-.cta{display:flex;flex-wrap:wrap;gap:12px;margin-top:28px}
-.btn{position:relative;display:inline-flex;align-items:center;gap:10px;height:52px;padding:0 22px;border-radius:14px;font-weight:600;letter-spacing:-.01em;
-  transition:transform .2s var(--ease),box-shadow .3s,background .3s;user-select:none}
-.btn:active{transform:scale(.97)}
-.btn svg{width:18px;height:18px}
-.btn-primary{background:var(--text);color:var(--bg);box-shadow:0 10px 30px -10px var(--glow)}
-.btn-primary:hover{box-shadow:0 14px 40px -10px var(--glow)}
-.running .btn-primary{background:var(--ok);color:#04140b;box-shadow:0 10px 40px -8px rgba(47,210,122,.55)}
-.btn-ghost{border:1px solid var(--line2);background:var(--panel)}
-.btn-danger{background:color-mix(in srgb,var(--danger) 14%,transparent);color:var(--danger);border:1px solid color-mix(in srgb,var(--danger) 40%,transparent)}
-.btn-danger:hover{background:color-mix(in srgb,var(--danger) 22%,transparent)}
-kbd{font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;padding:3px 6px;border-radius:5px;border:1px solid currentColor;opacity:.45}
+/* Kopfbereich mit Zustand */
+.top{padding:40px 0 28px;display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap}
+.top h1{font-size:32px;font-weight:600;letter-spacing:-.03em;line-height:1.15}
+.top p{color:var(--muted);margin-top:6px}
+.status{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:500;color:var(--muted);margin-bottom:10px}
+.status b{width:8px;height:8px;border-radius:2px;background:var(--off)}
+.running .status b{background:var(--on)}
+.running .status{color:var(--on)}
+.actions{display:flex;gap:8px}
+.actions .btn{height:40px;padding:0 16px;font-size:14px}
 
-/* Kennzahlen */
-.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:44px}
-.kpi{padding:18px 18px 16px;border-radius:var(--r);background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
-.kpi .k{font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:6px}
-.kpi .v{font-size:28px;font-weight:650;letter-spacing:-.03em;margin-top:6px}
-.kpi .s{font-size:12px;color:var(--faint);margin-top:2px}
-.bars{display:inline-flex;gap:3px;align-items:flex-end;height:18px;margin-left:4px}
-.bars i{width:4px;border-radius:2px;background:var(--line2);transition:background .3s}
-.bars i:nth-child(1){height:5px}.bars i:nth-child(2){height:9px}.bars i:nth-child(3){height:13px}.bars i:nth-child(4){height:18px}
-.bars i.on{background:var(--ok)}
+/* Kennzahlen wie Stripe: Zahlen mit Trennlinien, keine Kacheln */
+.stats{display:grid;grid-template-columns:repeat(5,1fr);border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+.stat{padding:16px 20px;border-left:1px solid var(--line)}
+.stat:first-child{border-left:0}
+.stat dt{font-size:12.5px;color:var(--muted)}
+.stat dd{font-size:24px;font-weight:600;letter-spacing:-.02em;margin-top:4px}
+.stat small{display:block;font-size:12px;color:var(--faint);margin-top:2px}
 
-/* Abschnitte */
-section{padding:44px 0}
-.sec-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:20px}
-h2{font-size:clamp(24px,3.4vw,34px);letter-spacing:-.035em;line-height:1.1;font-weight:680}
-.sec-head p{color:var(--muted);max-width:420px;font-size:14.5px}
-.panel{border-radius:var(--r);background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+/* Raster */
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:24px;margin-top:24px;align-items:start}
+.box{border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+.box>h2{font-size:13px;font-weight:600;padding:12px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+.box>h2 span{font-weight:400;color:var(--faint)}
+.stack{display:grid;gap:24px}
 
-/* Bahn-Schema */
-.track{padding:10px;overflow:hidden;position:relative}
-.track svg{display:block;width:100%;height:auto}
-.track .rail{fill:none;stroke:var(--line2);stroke-width:10;stroke-linecap:round;stroke-linejoin:round}
-.track .rail-hi{fill:none;stroke:url(#g-rail);stroke-width:3;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:6 14;opacity:0;transition:opacity .5s}
-.running .track .rail-hi{opacity:1;animation:flow 1.1s linear infinite}
-@keyframes flow{to{stroke-dashoffset:-40}}
-.lift-body{fill:var(--panel-solid);stroke:var(--line2);stroke-width:1.5}
-.chain{fill:none;stroke:var(--faint);stroke-width:3;stroke-dasharray:4 6}
-.running .chain{stroke:var(--ok);animation:chain .5s linear infinite}
-@keyframes chain{to{stroke-dashoffset:-20}}
-.node{cursor:pointer}
-.node .ring{fill:var(--panel-solid);stroke:var(--line2);stroke-width:1.5;transition:stroke .3s,filter .3s}
-.node:hover .ring{stroke:var(--accent);filter:drop-shadow(0 0 10px var(--glow))}
-.node .arm{stroke:var(--accent);stroke-width:5;stroke-linecap:round;transition:transform .6s var(--ease);transform-box:fill-box}
-.node text{fill:var(--text);font-size:13px;font-weight:600}
-.node .sub{fill:var(--muted);font-size:11px;font-weight:500}
-.gate .bar{fill:var(--danger);transition:transform .5s var(--ease)}
-.gate.open .bar{fill:var(--ok);transform:translateY(-26px)}
-.led circle.l{fill:var(--line2);transition:fill .4s,filter .4s}
-.leds-on .led circle.l{fill:url(#g-rainbow);filter:drop-shadow(0 0 12px rgba(255,120,200,.8))}
-.leds-on .led circle.l{animation:hue 3s linear infinite}
-@keyframes hue{to{filter:drop-shadow(0 0 12px rgba(120,200,255,.9)) hue-rotate(360deg)}}
-.marble{fill:#dfe6f3;opacity:0}
-.running .marble{opacity:1}
-.legend{display:flex;flex-wrap:wrap;gap:16px;padding:6px 14px 12px;color:var(--muted);font-size:12.5px}
-.legend span{display:inline-flex;align-items:center;gap:6px}
-.legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+/* Schema */
+.schema svg{display:block;width:100%;height:auto}
+.schema .rail{fill:none;stroke:var(--line-strong);stroke-width:2;stroke-linecap:round}
+.schema .flow{fill:none;stroke:var(--on);stroke-width:2;stroke-linecap:round;stroke-dasharray:4 8;opacity:0}
+.running .schema .flow{opacity:1;animation:flow 1s linear infinite}
+@keyframes flow{to{stroke-dashoffset:-24}}
+.schema .el{cursor:pointer}
+.schema .el rect,.schema .el circle.b{fill:var(--surface);stroke:var(--line-strong);stroke-width:1.5}
+.schema .el:hover rect,.schema .el:hover circle.b{stroke:var(--text)}
+.schema text{font-size:12px;fill:var(--muted)}
+.schema .val{fill:var(--text);font-weight:600}
+.schema .arm{stroke:var(--text);stroke-width:3;stroke-linecap:round;transition:transform .35s ease;transform-box:fill-box;transform-origin:0 50%}
+.schema .el .gatebar{fill:var(--stop);stroke:none;transition:fill .2s}
+.schema .el.open .gatebar{fill:var(--on)}
+.schema .el .lamp{fill:var(--off);stroke:none;transition:fill .2s}
+.leds-on .schema .el .lamp{fill:var(--on)}
+.schema .el .lift{fill:var(--off)}
+.running .schema .el .lift{fill:var(--on)}
 
-/* Steuerung */
-.controls{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
-.ctl{position:relative;text-align:left;padding:20px;border-radius:var(--r);background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);
-  min-height:150px;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;
-  transition:transform .25s var(--ease),border-color .3s,background .3s}
-.ctl:hover{transform:translateY(-2px);border-color:var(--line2)}
-.ctl:active{transform:scale(.98)}
-.ctl::before{content:"";position:absolute;inset:0;background:radial-gradient(400px circle at var(--mx,50%) var(--my,0%),var(--glow),transparent 40%);opacity:0;transition:opacity .3s;pointer-events:none}
-.ctl:hover::before{opacity:1}
-.ctl .top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
-.ico{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:var(--line);color:var(--text);transition:background .3s,color .3s}
-.ico svg{width:20px;height:20px}
-.ctl.on .ico{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
-.ctl h3{font-size:17px;letter-spacing:-.02em;font-weight:620;margin-top:18px}
-.ctl .st{font-size:13.5px;color:var(--muted);display:flex;align-items:center;gap:8px}
-.tog{width:44px;height:26px;border-radius:999px;background:var(--line2);position:relative;transition:background .3s;flex:none}
-.tog::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.3);transition:transform .35s var(--ease)}
-.ctl.on .tog{background:var(--ok)}
-.ctl.on .tog::after{transform:translateX(18px)}
-.seg{display:inline-flex;padding:3px;border-radius:10px;background:var(--line);font-size:12px;font-weight:600}
-.seg b{padding:4px 10px;border-radius:7px;color:var(--muted);transition:background .3s,color .3s}
-.seg b.act{background:var(--panel-solid);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.25)}
-.ctl.busy{pointer-events:none}
-.ctl.busy .ico{animation:pulse .8s ease-in-out infinite}
-@keyframes pulse{50%{opacity:.4}}
-.ctl.stop{background:linear-gradient(135deg,color-mix(in srgb,var(--danger) 18%,transparent),color-mix(in srgb,var(--danger) 6%,transparent));border-color:color-mix(in srgb,var(--danger) 35%,transparent)}
-.ctl.stop .ico{background:var(--danger);color:#fff}
-.ctl.stop h3{color:var(--danger)}
+/* Zeitleiste wie Datadog: Zustand je Bauteil */
+.tl{padding:12px 16px 14px}
+.tl-row{display:grid;grid-template-columns:110px 1fr 52px;align-items:center;gap:12px;height:28px}
+.tl-row span{font-size:12.5px;color:var(--muted)}
+.tl-row em{font-style:normal;font-size:12px;color:var(--faint);text-align:right}
+.tl canvas{width:100%;height:14px;display:block;border-radius:2px;background:var(--sub)}
+.tl-axis{display:grid;grid-template-columns:110px 1fr 52px;gap:12px;font-size:11px;color:var(--faint);margin-top:4px}
+.tl-axis div{display:flex;justify-content:space-between}
 
-/* Aktivitaet + Firmware */
-.two{display:grid;grid-template-columns:1.25fr 1fr;gap:14px}
-.feed{padding:8px;max-height:380px;overflow:auto}
-.feed ol{list-style:none;padding:0}
-.feed li{display:flex;gap:12px;align-items:flex-start;padding:10px 12px;border-radius:12px;animation:slidein .45s var(--ease)}
-.feed li:hover{background:var(--line)}
-.feed .t{font-size:12px;color:var(--faint);min-width:58px;padding-top:1px}
-.feed .m{font-size:14px}
-.feed .b{width:8px;height:8px;border-radius:50%;margin-top:7px;flex:none;background:var(--accent)}
-.feed .b.g{background:var(--ok)}.feed .b.r{background:var(--danger)}.feed .b.y{background:var(--warn)}
-.empty{color:var(--faint);padding:24px 12px;text-align:center;font-size:14px}
-@keyframes slidein{from{opacity:0;transform:translateY(-6px)}}
-.fw{padding:22px}
-.fw dl{display:grid;grid-template-columns:auto 1fr;gap:10px 18px;font-size:14px;margin:4px 0 18px}
-.fw dt{color:var(--muted)}
-.fw dd{text-align:right;font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px}
-.badge.ok{background:color-mix(in srgb,var(--ok) 16%,transparent);color:var(--ok)}
-.badge.mut{background:var(--line);color:var(--muted)}
-.badge.warn{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
-.fw .btn{width:100%;justify-content:center;height:48px}
-details{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
-summary{cursor:pointer;color:var(--muted);font-size:13.5px;list-style:none}
-summary::-webkit-details-marker{display:none}
-summary::before{content:"+ "}
-details[open] summary::before{content:"– "}
-input{width:100%;margin-top:10px;font:13px ui-monospace,SFMono-Regular,Menlo,monospace;padding:12px;border-radius:12px;border:1px solid var(--line2);background:var(--bg2);color:var(--text)}
-input:focus{outline:2px solid var(--accent);outline-offset:1px}
-.fw .row{margin-top:10px}
-.otaline{font-size:13px;color:var(--muted);margin-top:12px;min-height:1.2em}
+/* Steuerung als Liste wie Linear */
+.ctl{width:100%;display:flex;align-items:center;gap:12px;padding:12px 16px;border-top:1px solid var(--line);text-align:left}
+.ctl:first-of-type{border-top:0}
+.ctl:hover{background:var(--sub)}
+.ctl .n{flex:1}
+.ctl .n b{display:block;font-weight:500}
+.ctl .n small{color:var(--muted);font-size:12.5px}
+.sw{width:36px;height:20px;border-radius:10px;background:var(--off);position:relative;transition:background .15s;flex:none}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .15s}
+.ctl.on .sw{background:var(--on)}
+.ctl.on .sw::after{transform:translateX(16px)}
+.pos{display:inline-flex;border:1px solid var(--line-strong);border-radius:6px;overflow:hidden;font-size:12px;font-weight:500;flex:none}
+.pos i{font-style:normal;padding:2px 9px;color:var(--faint)}
+.pos i.a{background:var(--text);color:var(--bg)}
+.ctl.busy{opacity:.55;pointer-events:none}
 
-footer{padding:40px 0 120px;color:var(--faint);font-size:13px;text-align:center}
+/* Tabellen */
+table{width:100%;border-collapse:collapse;font-size:13px}
+td{padding:9px 16px;border-top:1px solid var(--line);vertical-align:top}
+tr:first-child td{border-top:0}
+td.k{color:var(--muted);width:44%}
+td.v{text-align:right;font-weight:500;word-break:break-all}
+.log td.t{color:var(--faint);font-family:var(--mono);font-size:12px;width:84px;white-space:nowrap}
+.log td.m{color:var(--text)}
+.log .empty{color:var(--faint);text-align:center;padding:20px}
+.tag{font-size:12px;font-weight:500;padding:1px 6px;border-radius:4px;border:1px solid var(--line-strong);color:var(--muted)}
+.tag.on{border-color:transparent;background:var(--on-bg);color:var(--on)}
+.tag.warn{color:var(--warn);border-color:currentColor}
+.fwact{padding:12px 16px;border-top:1px solid var(--line);display:grid;gap:8px}
+.fwact .btn{justify-content:center;height:36px}
+.fwact input{width:100%;height:32px;padding:0 10px;border:1px solid var(--line-strong);border-radius:6px;background:var(--bg);color:var(--text);font:12px var(--mono)}
+.fwact details summary{font-size:12.5px;color:var(--muted);cursor:pointer}
+.fwact details[open] summary{margin-bottom:8px}
+#otamsg{font-size:12.5px;color:var(--muted)}
+#otamsg:empty{display:none}
 
-/* Toast */
-#toasts{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);display:flex;flex-direction:column;gap:8px;z-index:80;pointer-events:none;width:min(92vw,380px)}
-.toast{padding:12px 16px;border-radius:14px;background:var(--panel-solid);border:1px solid var(--line2);box-shadow:0 20px 50px -10px rgba(0,0,0,.5);
-  font-size:14px;display:flex;gap:10px;align-items:center;animation:toast .5s var(--ease)}
-.toast.out{animation:toastout .35s var(--ease) forwards}
-@keyframes toast{from{opacity:0;transform:translateY(16px) scale(.96)}}
-@keyframes toastout{to{opacity:0;transform:translateY(10px) scale(.96)}}
+footer{color:var(--faint);font-size:12.5px;padding:32px 0 48px;text-align:center}
 
-/* Mobile Notaus-Leiste */
-.dock{display:none}
+/* dezentes Einblenden beim Scrollen */
+.fade{opacity:0;transform:translateY(8px);transition:opacity .5s ease,transform .5s ease}
+.fade.in{opacity:1;transform:none}
 
-/* Scroll-Animationen */
-.reveal{opacity:0;transform:translateY(28px);filter:blur(6px);transition:opacity .9s var(--ease),transform .9s var(--ease),filter .9s var(--ease);transition-delay:calc(var(--i,0) * 80ms)}
-.reveal.in{opacity:1;transform:none;filter:none}
-.split span{display:inline-block;opacity:0;transform:translateY(.35em);animation:rise .9s var(--ease) forwards;animation-delay:calc(var(--d) * 40ms + 100ms)}
-@keyframes rise{to{opacity:1;transform:none}}
+#toast{position:fixed;bottom:20px;left:50%;transform:translate(-50%,8px);background:var(--text);color:var(--bg);font-size:13px;padding:8px 14px;border-radius:6px;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;z-index:20}
+#toast.show{opacity:1;transform:translate(-50%,0)}
 
-@media (max-width:900px){
-  .kpis{grid-template-columns:repeat(2,1fr)}
-  .controls{grid-template-columns:repeat(2,1fr)}
-  .two{grid-template-columns:1fr}
-}
-@media (max-width:560px){
+@media (max-width:960px){.grid{grid-template-columns:1fr}}
+@media (max-width:640px){
   .wrap{padding:0 16px}
-  .hide-sm{display:none}
-  .hero{padding-top:34px}
-  .kpi .v{font-size:23px}
-  .controls{grid-template-columns:1fr 1fr;gap:10px}
-  .ctl{min-height:128px;padding:16px}
-  .ctl.stop{display:none}
-  .dock{display:flex;position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:70;gap:10px}
-  .dock .btn{flex:1;justify-content:center;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
-  .dock .btn-danger{background:color-mix(in srgb,var(--danger) 85%,#000);color:#fff}
-  #toasts{bottom:90px}
-  kbd{display:none}
+  .top{padding:24px 0 20px}
+  .top h1{font-size:26px}
+  .actions{width:100%}.actions .btn{flex:1;justify-content:center}
+  .stats{grid-template-columns:1fr 1fr}
+  .stat:nth-child(odd){border-left:0}
+  .stat:nth-child(n+3){border-top:1px solid var(--line)}
+  .stat:last-child{grid-column:1/-1}
+  .hide-sm,kbd{display:none}
+  .tl-row,.tl-axis{grid-template-columns:84px 1fr 40px}
 }
-@media (prefers-reduced-motion:reduce){
-  *,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
-  .reveal,.split span{opacity:1;transform:none;filter:none}
-}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}.fade{opacity:1;transform:none}}
 </style>
 </head>
 <body>
-<div class="bg" aria-hidden="true"><div class="blob a"></div><div class="blob b"></div></div>
-<div id="progress"></div>
-
-<header id="hdr">
+<header>
  <div class="wrap">
-  <div class="logo">
-   <div class="mark"><svg viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="11" r="2.2"/><path d="M3 4h7l3 3"/></svg></div>
-   <span>Parcours 1</span>
-  </div>
-  <div class="spacer"></div>
-  <span class="pill hide-sm" id="fwpill"><span class="chip mono" id="fwchip">–</span></span>
-  <span class="pill off" id="live"><span class="dot"></span><span id="livetxt">verbinde …</span></span>
+  <div class="brand">Parcours 1<span class="hide-sm">fischertechnik Dynamic XXL</span></div>
+  <div class="grow"></div>
+  <div class="conn" id="conn"><i></i><span id="conntxt">verbinde …</span></div>
  </div>
 </header>
 
-<main>
- <div class="wrap">
-  <section class="hero" id="hero">
-   <div class="eyebrow reveal"><b>fischertechnik Dynamic XXL</b> · Arduino Giga R1 WiFi</div>
-   <h1><span class="split" id="h1a">Kugelbahn</span><br><span class="state" id="state">bereit.</span></h1>
-   <p class="lead reveal" style="--i:2" id="lead">Aufzug, Weichen, Stoppstelle und Licht – live, von jedem Gerät im Hotspot.</p>
-   <div class="cta reveal" style="--i:3">
-    <button class="btn btn-primary" id="mainbtn" data-c="a"><svg viewBox="0 0 24 24" fill="currentColor"><path id="mainico" d="M8 5v14l11-7z"/></svg><span id="maintxt">Aufzug starten</span><kbd>A</kbd></button>
-    <button class="btn btn-danger" data-c="x"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>Alles stoppen<kbd>X</kbd></button>
-   </div>
+<main class="wrap">
+ <section class="top">
+  <div>
+   <div class="status"><b></b><span id="stxt">Bereit</span></div>
+   <h1 id="headline">Kugelbahn steht</h1>
+   <p id="sub">Arduino Giga R1 · Steuerung für alle Geräte im Hotspot</p>
+  </div>
+  <div class="actions">
+   <button class="btn primary" data-c="a" id="mainbtn"><span id="maintxt">Aufzug starten</span><kbd>A</kbd></button>
+   <button class="btn stop" data-c="x">Alles stoppen<kbd>X</kbd></button>
+  </div>
+ </section>
 
-   <div class="kpis">
-    <div class="kpi reveal" style="--i:4"><div class="k">Aufzug-Laufzeit</div><div class="v mono" id="k_run">0:00</div><div class="s" id="k_run_s">heute in dieser Sitzung</div></div>
-    <div class="kpi reveal" style="--i:5"><div class="k">Giga online</div><div class="v mono" id="k_up">–</div><div class="s" id="k_up_s">seit letztem Neustart</div></div>
-    <div class="kpi reveal" style="--i:6"><div class="k">WLAN-Signal <span class="bars" id="bars"><i></i><i></i><i></i><i></i></span></div><div class="v mono" id="k_rssi">–</div><div class="s" id="k_lat">Antwortzeit –</div></div>
-    <div class="kpi reveal" style="--i:7"><div class="k">Schaltvorgänge</div><div class="v mono" id="k_sw">0</div><div class="s">Weichen & Stoppstelle, live</div></div>
-   </div>
-  </section>
+ <dl class="stats fade">
+  <div class="stat"><dt>Aufzug-Laufzeit</dt><dd class="num" id="k_run">0:00</dd><small>in dieser Sitzung</small></div>
+  <div class="stat"><dt>Giga online</dt><dd class="num" id="k_up">–</dd><small>seit Neustart</small></div>
+  <div class="stat"><dt>WLAN</dt><dd class="num" id="k_rssi">–</dd><small id="k_lat">Antwortzeit –</small></div>
+  <div class="stat"><dt>Schaltvorgänge</dt><dd class="num" id="k_sw">0</dd><small>Weichen und Stoppstelle</small></div>
+  <div class="stat"><dt>Daten des Giga</dt><dd class="num" id="k_dat">–</dd><small id="k_dat_s">seit Neustart, geschätzt</small></div>
+ </dl>
 
-  <section id="bahn">
-   <div class="sec-head reveal"><h2>Die Bahn</h2><p>Live-Schema. Tippe auf eine Weiche, die Stoppstelle oder die LEDs, um sie zu schalten.</p></div>
-   <div class="panel track reveal" style="--i:1" id="trackpanel">
-    <svg viewBox="0 0 960 380" role="img" aria-label="Schema der Kugelbahn">
-     <defs>
-      <linearGradient id="g-rail" x1="0" x2="1"><stop offset="0" stop-color="#2fd27a"/><stop offset="1" stop-color="#59e3c4"/></linearGradient>
-      <radialGradient id="g-rainbow"><stop offset="0" stop-color="#fff"/><stop offset=".4" stop-color="#ff6ad5"/><stop offset="1" stop-color="#7a5cff"/></radialGradient>
-     </defs>
-     <!-- Bahnverlauf -->
-     <path id="p-main" class="rail" d="M110 60 C 260 60, 300 90, 360 130 S 470 190, 520 190"/>
-     <path class="rail" d="M520 190 C 600 190, 640 120, 760 110 S 880 150, 880 200"/>
-     <path class="rail" d="M520 190 C 600 190, 640 260, 700 270"/>
-     <path class="rail" d="M700 270 C 760 280, 800 300, 860 300"/>
-     <path class="rail" d="M700 270 C 720 320, 640 340, 420 330 S 140 320, 110 320"/>
-     <path class="rail" d="M880 200 C 880 260, 900 290, 860 300"/>
-     <path class="rail-hi" d="M110 60 C 260 60, 300 90, 360 130 S 470 190, 520 190 C 600 190, 640 260, 700 270 C 720 320, 640 340, 420 330 S 140 320, 110 320"/>
-     <path id="p-marble" fill="none" stroke="none" d="M110 320 L110 60 C 260 60, 300 90, 360 130 S 470 190, 520 190 C 600 190, 640 260, 700 270 C 720 320, 640 340, 420 330 S 140 320, 110 320"/>
+ <div class="grid">
+  <div class="stack">
+   <div class="box schema fade">
+    <h2>Bahn <span>antippen zum Schalten</span></h2>
+    <svg viewBox="0 0 760 300" role="img" aria-label="Schema der Kugelbahn">
+     <path class="rail" d="M90 50 H250 L330 130 H430 L520 70 H640"/>
+     <path class="rail" d="M430 130 L520 200 H640"/>
+     <path class="rail" d="M520 200 L560 250 H90 V50"/>
+     <path class="rail" d="M640 70 V200"/>
+     <path class="flow" d="M90 250 V50 H250 L330 130 H430 L520 200 L560 250 H90"/>
 
-     <!-- Kettenaufzug -->
-     <g class="node" data-c="a">
-      <rect class="lift-body" x="80" y="40" width="60" height="300" rx="16"/>
-      <line class="chain" x1="100" y1="320" x2="100" y2="60"/>
-      <line class="chain" x1="120" y1="60" x2="120" y2="320"/>
-      <text x="110" y="366" text-anchor="middle">Aufzug</text>
+     <g class="el" data-c="a">
+      <rect x="66" y="40" width="48" height="220" rx="6"/>
+      <rect class="lift" x="84" y="60" width="12" height="180" rx="2" style="stroke:none"/>
+      <text x="90" y="284" text-anchor="middle">Aufzug</text>
      </g>
-
-     <!-- Stoppstelle -->
-     <g class="node gate" id="gate" data-c="s" transform="translate(360 130)">
-      <circle class="ring" r="30"/>
-      <rect class="bar" x="-4" y="-18" width="8" height="36" rx="4"/>
-      <text y="56" text-anchor="middle">Stoppstelle</text>
-      <text class="sub" y="72" text-anchor="middle" id="t_stopp">zu</text>
+     <g class="el" id="gate" data-c="s" transform="translate(290 90)">
+      <circle class="b" r="22"/>
+      <rect class="gatebar" x="-3" y="-12" width="6" height="24" rx="1"/>
+      <text y="44" text-anchor="middle">Stoppstelle</text>
+      <text class="val" y="60" text-anchor="middle" id="t_s">zu</text>
      </g>
-
-     <!-- Stellweiche Flexschiene -->
-     <g class="node" data-c="w" transform="translate(520 190)">
-      <circle class="ring" r="30"/>
-      <line class="arm" id="arm_w" x1="0" y1="0" x2="20" y2="-12"/>
-      <circle r="5" fill="var(--text)"/>
-      <text y="-44" text-anchor="middle">Stellweiche</text>
-      <text class="sub" y="56" text-anchor="middle" id="t_w">Stellung 1</text>
+     <g class="el" data-c="w" transform="translate(430 130)">
+      <circle class="b" r="22"/>
+      <line class="arm" id="arm_w" x1="0" y1="0" x2="16" y2="-10"/>
+      <text y="-32" text-anchor="middle">Stellweiche</text>
+      <text class="val" y="44" text-anchor="middle" id="t_w">1</text>
      </g>
-
-     <!-- Weichenhebel -->
-     <g class="node" data-c="h" transform="translate(700 270)">
-      <circle class="ring" r="30"/>
-      <line class="arm" id="arm_h" x1="0" y1="0" x2="22" y2="2"/>
-      <circle r="5" fill="var(--text)"/>
-      <text y="-44" text-anchor="middle">Weichenhebel</text>
-      <text class="sub" y="56" text-anchor="middle" id="t_h">Stellung 1</text>
+     <g class="el" data-c="h" transform="translate(520 200)">
+      <circle class="b" r="22"/>
+      <line class="arm" id="arm_h" x1="0" y1="0" x2="18" y2="0"/>
+      <text x="34" y="-4">Weichenhebel</text>
+      <text class="val" x="34" y="12" id="t_h">1</text>
      </g>
-
-     <!-- LEDs -->
-     <g class="node led" data-c="l" transform="translate(860 60)">
-      <rect class="ring" x="-56" y="-26" width="112" height="52" rx="26"/>
-      <circle class="l" cx="-24" r="12"/><circle class="l" cx="24" r="12"/>
-      <text y="48" text-anchor="middle">LEDs</text>
-     </g>
-
-     <!-- Kugeln (laufen, solange der Aufzug an ist) -->
-     <g id="marbles">
-      <circle class="marble" r="7"><animateMotion dur="7s" repeatCount="indefinite" rotate="auto"><mpath href="#p-marble"/></animateMotion></circle>
-      <circle class="marble" r="7"><animateMotion dur="7s" begin="-2.3s" repeatCount="indefinite"><mpath href="#p-marble"/></animateMotion></circle>
-      <circle class="marble" r="7"><animateMotion dur="7s" begin="-4.6s" repeatCount="indefinite"><mpath href="#p-marble"/></animateMotion></circle>
+     <g class="el" data-c="l" transform="translate(640 70)">
+      <rect x="-34" y="-16" width="68" height="32" rx="4"/>
+      <rect class="lamp" x="-22" y="-6" width="12" height="12" rx="2"/>
+      <rect class="lamp" x="10" y="-6" width="12" height="12" rx="2"/>
+      <text y="-26" text-anchor="middle">LEDs</text>
      </g>
     </svg>
-    <div class="legend"><span><i style="background:var(--ok)"></i>läuft / offen</span><span><i style="background:var(--danger)"></i>gesperrt</span><span><i style="background:var(--accent)"></i>Weichenstellung</span></div>
    </div>
-  </section>
 
-  <section id="steuerung">
-   <div class="sec-head reveal"><h2>Steuerung</h2><p>Jeder Befehl geht sofort an den Giga. Alle, die die Seite offen haben, sehen dasselbe.</p></div>
-   <div class="controls">
-    <button class="ctl reveal" style="--i:0" data-c="a" id="c_a">
-     <div class="top"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v18M7 8l5-5 5 5"/></svg></div><span class="tog"></span></div>
-     <div><h3>Kettenaufzug</h3><div class="st"><span id="s_a">aus</span><kbd>A</kbd></div></div>
-    </button>
-    <button class="ctl reveal" style="--i:1" data-c="w" id="c_w">
-     <div class="top"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20c4-8 8-8 16-8M4 20c6-2 10-8 16-16"/></svg></div><span class="seg"><b id="w1">1</b><b id="w2">2</b></span></div>
-     <div><h3>Stellweiche</h3><div class="st">Flexschiene<kbd>W</kbd></div></div>
-    </button>
-    <button class="ctl reveal" style="--i:2" data-c="h" id="c_h">
-     <div class="top"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 19l7-7m0 0l7-7M12 12h8"/><circle cx="12" cy="12" r="2"/></svg></div><span class="seg"><b id="h1">1</b><b id="h2">2</b></span></div>
-     <div><h3>Weichenhebel</h3><div class="st">Stellweiche mit Hebel<kbd>H</kbd></div></div>
-    </button>
-    <button class="ctl reveal" style="--i:3" data-c="s" id="c_s">
-     <div class="top"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 4v16M18 4v16M6 12h12"/></svg></div><span class="tog"></span></div>
-     <div><h3>Stoppstelle</h3><div class="st"><span id="s_s">zu</span><kbd>S</kbd></div></div>
-    </button>
-    <button class="ctl reveal" style="--i:4" data-c="l" id="c_l">
-     <div class="top"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.8.8 1 1.5 1 2.5h6c0-1 .2-1.7 1-2.5A6 6 0 0 0 12 3z"/></svg></div><span class="tog"></span></div>
-     <div><h3>Rainbow-LEDs</h3><div class="st"><span id="s_l">aus</span><kbd>L</kbd></div></div>
-    </button>
-    <button class="ctl stop reveal" style="--i:5" data-c="x">
-     <div class="top"><div class="ico"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></div></div>
-     <div><h3>Alles stoppen</h3><div class="st">Motoren aus, Stoppstelle zu<kbd>X</kbd></div></div>
-    </button>
+   <div class="box fade">
+    <h2>Verlauf <span>letzte 5 Minuten</span></h2>
+    <div class="tl" id="tl"></div>
    </div>
-  </section>
+  </div>
 
-  <section id="system">
-   <div class="sec-head reveal"><h2>Aktivität & System</h2><p>Was zuletzt passiert ist, und welche Firmware gerade läuft.</p></div>
-   <div class="two">
-    <div class="panel feed reveal" style="--i:0"><ol id="feed"><li class="empty">Noch nichts passiert.</li></ol></div>
-    <div class="panel fw reveal" style="--i:1">
-     <dl>
-      <dt>Läuft</dt><dd class="mono" id="f_ver">–</dd>
-      <dt>Auf GitHub</dt><dd class="mono" id="f_gh">–</dd>
-      <dt>Auto-Update</dt><dd id="f_auto">–</dd>
-      <dt>Gebaut</dt><dd id="f_date">–</dd>
-      <dt>Adresse</dt><dd class="mono" id="f_ip">–</dd>
-     </dl>
-     <button class="btn btn-ghost" id="ghbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4v11m0 0l-4-4m4 4l4-4M5 20h14"/></svg>Jetzt von GitHub laden</button>
-     <div class="otaline" id="otaline"></div>
-     <details>
-      <summary>Update von eigener Adresse</summary>
+  <div class="stack">
+   <div class="box fade" id="ctls">
+    <h2>Steuerung <span class="hide-sm">Tastenkürzel</span></h2>
+    <button class="ctl" data-c="a" id="c_a"><div class="n"><b>Kettenaufzug</b><small id="s_a">aus</small></div><kbd>A</kbd><span class="sw"></span></button>
+    <button class="ctl" data-c="w" id="c_w"><div class="n"><b>Stellweiche</b><small>Flexschiene</small></div><kbd>W</kbd><span class="pos"><i id="w1">1</i><i id="w2">2</i></span></button>
+    <button class="ctl" data-c="h" id="c_h"><div class="n"><b>Weichenhebel</b><small>Stellweiche mit Hebel</small></div><kbd>H</kbd><span class="pos"><i id="h1">1</i><i id="h2">2</i></span></button>
+    <button class="ctl" data-c="s" id="c_s"><div class="n"><b>Stoppstelle</b><small id="s_s">zu</small></div><kbd>S</kbd><span class="sw"></span></button>
+    <button class="ctl" data-c="l" id="c_l"><div class="n"><b>LEDs</b><small id="s_l">aus</small></div><kbd>L</kbd><span class="sw"></span></button>
+   </div>
+
+   <div class="box fade">
+    <h2>Ereignisse</h2>
+    <table class="log"><tbody id="log"><tr><td class="empty" colspan="2">Noch keine Ereignisse</td></tr></tbody></table>
+   </div>
+
+   <div class="box fade">
+    <h2>Firmware</h2>
+    <table><tbody>
+     <tr><td class="k">Läuft</td><td class="v num" id="f_ver">–</td></tr>
+     <tr><td class="k">Neueste auf GitHub</td><td class="v num" id="f_gh">–</td></tr>
+     <tr><td class="k">Auto-Update</td><td class="v" id="f_auto">–</td></tr>
+     <tr><td class="k">Gebaut</td><td class="v" id="f_date">–</td></tr>
+     <tr><td class="k">Adresse</td><td class="v num" id="f_ip">–</td></tr>
+    </tbody></table>
+    <div class="fwact">
+     <div id="otamsg"></div>
+     <button class="btn" id="ghbtn">Jetzt von GitHub laden</button>
+     <details><summary>Von eigener Adresse laden</summary>
       <input id="url" spellcheck="false" autocomplete="off">
-      <div class="row"><button class="btn btn-ghost" id="urlbtn">Update starten</button></div>
+      <button class="btn" id="urlbtn" style="margin-top:8px;width:100%;justify-content:center">Update starten</button>
      </details>
     </div>
    </div>
-  </section>
+  </div>
  </div>
 </main>
-
-<footer>Parcours 1 · läuft direkt auf dem Arduino Giga · Code: github.com/JAbstractClass/parcours1-giga</footer>
-
-<div class="dock">
- <button class="btn btn-primary" data-c="a" id="dockmain">Aufzug</button>
- <button class="btn btn-danger" data-c="x">Stopp</button>
-</div>
-<div id="toasts"></div>
+<footer>Code: github.com/JAbstractClass/parcours1-giga</footer>
+<div id="toast"></div>
 
 <script>
 (()=>{
 const $=id=>document.getElementById(id);
-const root=document.documentElement;
-let S=null, lastOk=0, latency=0, runMs=0, runSince=null, switches=0, upBase=null;
-const NAMES={a:'Aufzug',w:'Stellweiche',h:'Weichenhebel',s:'Stoppstelle',l:'LEDs',x:'Alles stoppen'};
+const B=document.body;
+let S=null,lastOk=0,lat=0,runMs=0,runSince=null,sw=0,up=null;
 
-/* ---------- Ueberschrift in Buchstaben zerlegen ---------- */
-const h=$('h1a'); h.innerHTML=[...h.textContent].map((c,i)=>`<span style="--d:${i}">${c}</span>`).join('');
-
-/* ---------- Scroll-Effekte ---------- */
-const hdr=$('hdr'), prog=$('progress'), blobs=document.querySelectorAll('.blob');
-let ticking=false;
-function onScroll(){
-  if(ticking) return; ticking=true;
-  requestAnimationFrame(()=>{
-    const y=scrollY, max=document.documentElement.scrollHeight-innerHeight;
-    hdr.classList.toggle('compact', y>24);
-    prog.style.transform=`scaleX(${max>0?y/max:0})`;
-    blobs.forEach((b,i)=>b.style.translate=`0 ${y*(i?.18:.3)}px`);
-    ticking=false;
+/* ---------- Verlauf (5 min, 1 Wert pro Sekunde) ---------- */
+const N=300;
+const TL=[
+ {k:'aufzug',name:'Aufzug',  on:v=>v},
+ {k:'stopp', name:'Stoppstelle',on:v=>v},
+ {k:'weiche',name:'Stellweiche',on:v=>v===2,two:true},
+ {k:'hebel', name:'Weichenhebel',on:v=>v===2,two:true},
+ {k:'leds',  name:'LEDs',    on:v=>v},
+];
+const hist=Object.fromEntries(TL.map(t=>[t.k,[]]));
+$('tl').innerHTML=TL.map(t=>`<div class="tl-row"><span>${t.name}</span><canvas id="cv_${t.k}" height="14"></canvas><em id="pc_${t.k}">–</em></div>`).join('')+
+ '<div class="tl-axis"><span></span><div><span>−5 min</span><span>−2,5 min</span><span>jetzt</span></div><span></span></div>';
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function drawTL(){
+  const cOn=css('--on'),cOff=css('--off'),cAlt=css('--muted');
+  TL.forEach(t=>{
+    const cv=$('cv_'+t.k),w=cv.clientWidth,dpr=devicePixelRatio||1;
+    if(cv.width!==Math.round(w*dpr)){cv.width=Math.round(w*dpr);cv.height=14*dpr;}
+    const g=cv.getContext('2d');g.clearRect(0,0,cv.width,cv.height);
+    const h=hist[t.k],bw=cv.width/N;let onCount=0;
+    for(let i=0;i<h.length;i++){
+      const v=h[i];if(v===null)continue;
+      const on=t.on(v);if(on)onCount++;
+      g.fillStyle=t.two?(on?cAlt:cOff):(on?cOn:cOff);
+      g.fillRect(cv.width-(h.length-i)*bw,0,Math.ceil(bw),cv.height);
+    }
+    const valid=h.filter(v=>v!==null).length;
+    $('pc_'+t.k).textContent=valid?(t.two?'Stg. '+(h[h.length-1]):Math.round(onCount/valid*100)+' %'):'–';
   });
 }
-addEventListener('scroll',onScroll,{passive:true}); onScroll();
-
-const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}}),{threshold:.12,rootMargin:'0px 0px -40px 0px'});
-document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
-
-/* Lichtkegel folgt der Maus auf den Karten */
-document.querySelectorAll('.ctl').forEach(el=>el.addEventListener('pointermove',e=>{
-  const r=el.getBoundingClientRect();
-  el.style.setProperty('--mx',(e.clientX-r.left)+'px'); el.style.setProperty('--my',(e.clientY-r.top)+'px');
-}));
-
-/* ---------- Toasts ---------- */
-function toast(msg){
-  const t=document.createElement('div'); t.className='toast'; t.textContent=msg;
-  $('toasts').appendChild(t);
-  setTimeout(()=>{t.classList.add('out'); setTimeout(()=>t.remove(),400);},2600);
-}
-
-/* ---------- Aktivitaet ---------- */
-function log(msg,kind){
-  const f=$('feed'); const e=f.querySelector('.empty'); if(e) e.remove();
-  const li=document.createElement('li');
-  const t=new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-  li.innerHTML=`<span class="b ${kind||''}"></span><span class="t mono">${t}</span><span class="m"></span>`;
-  li.querySelector('.m').textContent=msg;
-  f.prepend(li); while(f.children.length>40) f.lastChild.remove();
-}
+setInterval(()=>{TL.forEach(t=>{hist[t.k].push(S&&Date.now()-lastOk<4000?S[t.k]:null);if(hist[t.k].length>N)hist[t.k].shift();});drawTL();},1000);
+addEventListener('resize',drawTL);
 
 /* ---------- Hilfen ---------- */
-const fmtDur=s=>{s=Math.max(0,Math.floor(s));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return h?`${h}:${String(m).padStart(2,'0')}:${String(x).padStart(2,'0')}`:`${m}:${String(x).padStart(2,'0')}`};
-const rssiBars=r=>r>=-55?4:r>=-65?3:r>=-75?2:r>=-85?1:0;
-
-/* ---------- Zustand anzeigen ---------- */
-function render(s){
-  const prev=S; S=s;
-  document.body.classList.toggle('running',s.aufzug);
-  document.body.classList.toggle('leds-on',s.leds);
-
-  $('state').textContent = s.aufzug ? 'läuft.' : 'bereit.';
-  $('lead').textContent = s.aufzug
-    ? 'Der Kettenaufzug fördert Kugeln. Die Stoppstelle gibt sie in Takten frei.'
-    : 'Aufzug, Weichen, Stoppstelle und Licht – live, von jedem Gerät im Hotspot.';
-  $('maintxt').textContent = s.aufzug ? 'Aufzug stoppen' : 'Aufzug starten';
-  $('mainico').setAttribute('d', s.aufzug ? 'M7 5h4v14H7zM13 5h4v14h-4z' : 'M8 5v14l11-7z');
-  $('dockmain').textContent = s.aufzug ? 'Aufzug aus' : 'Aufzug an';
-
-  $('c_a').classList.toggle('on',s.aufzug); $('s_a').textContent=s.aufzug?'läuft':'aus';
-  $('c_s').classList.toggle('on',s.stopp);  $('s_s').textContent=s.stopp?'offen':'zu';
-  $('c_l').classList.toggle('on',s.leds);   $('s_l').textContent=s.leds?'an':'aus';
-  $('w1').classList.toggle('act',s.weiche===1); $('w2').classList.toggle('act',s.weiche===2);
-  $('h1').classList.toggle('act',s.hebel===1);  $('h2').classList.toggle('act',s.hebel===2);
-
-  $('gate').classList.toggle('open',s.stopp); $('t_stopp').textContent=s.stopp?'offen':'zu';
-  $('arm_w').style.transform = s.weiche===1 ? 'rotate(0deg)' : 'rotate(70deg)';
-  $('arm_h').style.transform = s.hebel===1 ? 'rotate(0deg)' : 'rotate(-55deg)';
-  $('t_w').textContent='Stellung '+s.weiche; $('t_h').textContent='Stellung '+s.hebel;
-
-  /* Kennzahlen */
-  if(s.aufzug && !runSince) runSince=Date.now();
-  if(!s.aufzug && runSince){ runMs+=Date.now()-runSince; runSince=null; }
-  upBase={up:s.uptime,at:Date.now()};
-  $('k_rssi').textContent = s.rssi ? s.rssi+' dBm' : '–';
-  [...$('bars').children].forEach((b,i)=>b.classList.toggle('on',i<rssiBars(s.rssi)));
-  $('k_lat').textContent = 'Antwortzeit '+latency+' ms';
-
-  /* Firmware */
-  $('fwchip').textContent = s.version;
-  $('f_ver').textContent = s.version; $('f_gh').textContent = s.github||'noch nicht geprüft';
-  $('f_auto').innerHTML = s.auto ? '<span class="badge ok">an</span>' : '<span class="badge mut">aus · lokale Firmware</span>';
-  if(s.github && s.version!==s.github && s.auto) $('f_auto').innerHTML='<span class="badge warn">Update folgt</span>';
-  $('f_date').textContent = s.datum; $('f_ip').textContent = s.ip;
-  $('otaline').textContent = s.ota||'';
-
-  /* Aenderungen protokollieren (auch die von anderen Geraeten) */
-  if(prev){
-    if(prev.version!==s.version){ log('Neue Firmware läuft: '+s.version,'g'); toast('Neue Firmware läuft: '+s.version); }
-    if(prev.aufzug!==s.aufzug) log(s.aufzug?'Aufzug gestartet':'Aufzug gestoppt', s.aufzug?'g':'r');
-    if(prev.weiche!==s.weiche){ log('Stellweiche → Stellung '+s.weiche); switches++; }
-    if(prev.hebel!==s.hebel){ log('Weichenhebel → Stellung '+s.hebel); switches++; }
-    if(prev.stopp!==s.stopp){ log(s.stopp?'Stoppstelle offen':'Stoppstelle zu', s.stopp?'g':'y'); switches++; }
-    if(prev.leds!==s.leds) log(s.leds?'LEDs an':'LEDs aus');
-    if(prev.ota!==s.ota && s.ota) log(s.ota,'y');
-  } else log('Verbunden mit dem Giga ('+s.ip+')','g');
-  $('k_sw').textContent=switches;
+const dur=s=>{s=Math.max(0,Math.floor(s));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return h?`${h}:${String(m).padStart(2,'0')}:${String(x).padStart(2,'0')}`:`${m}:${String(x).padStart(2,'0')}`};
+let tt;function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),2200);}
+function log(m){
+  const tb=$('log');const e=tb.querySelector('.empty');if(e)e.parentNode.remove();
+  const tr=document.createElement('tr');
+  tr.innerHTML=`<td class="t">${new Date().toLocaleTimeString('de-DE')}</td><td class="m"></td>`;
+  tr.lastChild.textContent=m;tb.prepend(tr);while(tb.children.length>12)tb.lastChild.remove();
 }
 
-/* Laufende Zaehler jede Sekunde */
+/* ---------- Anzeige ---------- */
+function render(s){
+  const p=S;S=s;
+  B.classList.toggle('running',s.aufzug);B.classList.toggle('leds-on',s.leds);
+  $('stxt').textContent=s.aufzug?'Läuft':'Bereit';
+  $('headline').textContent=s.aufzug?'Kugelbahn läuft':'Kugelbahn steht';
+  $('maintxt').textContent=s.aufzug?'Aufzug stoppen':'Aufzug starten';
+  $('c_a').classList.toggle('on',s.aufzug);$('s_a').textContent=s.aufzug?'läuft':'aus';
+  $('c_s').classList.toggle('on',s.stopp);$('s_s').textContent=s.stopp?'offen':'zu';
+  $('c_l').classList.toggle('on',s.leds);$('s_l').textContent=s.leds?'an':'aus';
+  $('w1').className=s.weiche===1?'a':'';$('w2').className=s.weiche===2?'a':'';
+  $('h1').className=s.hebel===1?'a':'';$('h2').className=s.hebel===2?'a':'';
+  $('gate').classList.toggle('open',s.stopp);$('t_s').textContent=s.stopp?'offen':'zu';
+  $('arm_w').style.transform=s.weiche===1?'none':'rotate(65deg)';
+  $('arm_h').style.transform=s.hebel===1?'none':'rotate(50deg)';
+  $('t_w').textContent='Stellung '+s.weiche;$('t_h').textContent='Stellung '+s.hebel;
+
+  if(s.aufzug&&!runSince)runSince=Date.now();
+  if(!s.aufzug&&runSince){runMs+=Date.now()-runSince;runSince=null;}
+  up={v:s.uptime,at:Date.now()};
+  $('k_rssi').textContent=s.rssi?s.rssi+' dBm':'–';$('k_lat').textContent='Antwortzeit '+lat+' ms';
+
+  /* Giga-Datenverbrauch: Nutzdaten + ca. 7 KB je HTTPS-Verbindungsaufbau (Schaetzung) */
+  if(s.daten!==undefined){
+    const b=s.daten+s.abrufe*7000, mb=b/1e6, perH=s.uptime>60?b/s.uptime*3600/1e6:null;
+    $('k_dat').textContent=mb<1?Math.round(b/1e3)+' KB':mb.toFixed(1)+' MB';
+    $('k_dat_s').textContent=perH!==null?'≈ '+perH.toFixed(1)+' MB/h, geschätzt':'seit Neustart, geschätzt';
+  }
+  $('f_ver').textContent=s.version;$('f_gh').textContent=s.github||'–';
+  $('f_auto').innerHTML=!s.auto?'<span class="tag">aus (lokal gebaut)</span>':(s.github&&s.github!==s.version?'<span class="tag warn">Update folgt</span>':'<span class="tag on">an</span>');
+  $('f_date').textContent=s.datum;$('f_ip').textContent=s.ip;$('otamsg').textContent=s.ota||'';
+
+  if(p){
+    if(p.version!==s.version){log('Neue Firmware '+s.version);toast('Neue Firmware läuft: '+s.version);}
+    if(p.aufzug!==s.aufzug)log(s.aufzug?'Aufzug gestartet':'Aufzug gestoppt');
+    if(p.weiche!==s.weiche){log('Stellweiche auf Stellung '+s.weiche);sw++;}
+    if(p.hebel!==s.hebel){log('Weichenhebel auf Stellung '+s.hebel);sw++;}
+    if(p.stopp!==s.stopp){log(s.stopp?'Stoppstelle geöffnet':'Stoppstelle geschlossen');sw++;}
+    if(p.leds!==s.leds)log(s.leds?'LEDs an':'LEDs aus');
+    if(p.ota!==s.ota&&s.ota)log(s.ota);
+  }else log('Verbunden mit '+s.ip);
+  $('k_sw').textContent=sw;
+}
 setInterval(()=>{
-  const ms=runMs+(runSince?Date.now()-runSince:0);
-  $('k_run').textContent=fmtDur(ms/1000);
-  if(upBase) $('k_up').textContent=fmtDur(upBase.up+(Date.now()-upBase.at)/1000);
-  const live=$('live'), ok=Date.now()-lastOk<4000;
-  live.className='pill '+(ok?'live':'off');
-  $('livetxt').textContent = ok ? 'Live' : 'keine Verbindung';
+  $('k_run').textContent=dur((runMs+(runSince?Date.now()-runSince:0))/1000);
+  if(up)$('k_up').textContent=dur(up.v+(Date.now()-up.at)/1000);
+  const ok=Date.now()-lastOk<4000;
+  $('conn').className='conn '+(ok?'ok':(lastOk?'bad':''));
+  $('conntxt').textContent=ok?'Verbunden · '+lat+' ms':(lastOk?'Verbindung verloren':'verbinde …');
 },1000);
 
-/* ---------- Verbindung ---------- */
-async function poll(){
-  const t0=performance.now();
-  try{
-    const r=await fetch('/status',{cache:'no-store'});
-    const s=await r.json(); latency=Math.round(performance.now()-t0); lastOk=Date.now(); render(s);
-  }catch(e){}
-}
+/* ---------- Kommunikation ---------- */
+async function get(u){const t=performance.now();const r=await fetch(u,{cache:'no-store'});const j=await r.json();lat=Math.round(performance.now()-t);lastOk=Date.now();return j;}
+async function poll(){try{render(await get('/status'));}catch(e){}}
 async function cmd(c,el){
-  if(el) el.classList.add('busy');
-  try{
-    const t0=performance.now();
-    const r=await fetch('/cmd?c='+c,{cache:'no-store'});
-    const s=await r.json(); latency=Math.round(performance.now()-t0); lastOk=Date.now();
-    render(s);
-    if(c==='x') toast('Alles gestoppt');
-  }catch(e){ toast('Giga nicht erreichbar'); }
-  finally{ if(el) setTimeout(()=>el.classList.remove('busy'),c==='w'||c==='h'?400:0); }
+  if(el)el.classList.add('busy');
+  try{render(await get('/cmd?c='+c));if(c==='x')toast('Alles gestoppt');}
+  catch(e){toast('Giga nicht erreichbar');}
+  finally{if(el)setTimeout(()=>el.classList.remove('busy'),(c==='w'||c==='h')?400:0);}
 }
-document.querySelectorAll('[data-c]').forEach(el=>el.addEventListener('click',()=>cmd(el.dataset.c, el.classList.contains('ctl')?el:null)));
+document.querySelectorAll('[data-c]').forEach(el=>el.addEventListener('click',()=>cmd(el.dataset.c,el.classList.contains('ctl')?el:null)));
 addEventListener('keydown',e=>{
-  if(e.target.tagName==='INPUT'||e.metaKey||e.ctrlKey||e.altKey) return;
-  const k=e.key.toLowerCase(); if('awhslx'.includes(k)&&k.length===1){ cmd(k, document.querySelector(`.ctl[data-c="${k}"]`)); }
+  if(e.target.tagName==='INPUT'||e.metaKey||e.ctrlKey||e.altKey)return;
+  const k=e.key.toLowerCase();if(k.length===1&&'awhslx'.includes(k))cmd(k,document.querySelector('.ctl[data-c="'+k+'"]'));
 });
-
-$('ghbtn').addEventListener('click',async()=>{
-  toast('Update von GitHub gestartet – Giga startet gleich neu');
-  log('Update von GitHub angefordert','y');
-  try{ await fetch('/github',{cache:'no-store'}); }catch(e){}
-});
-$('urlbtn').addEventListener('click',async()=>{
-  const u=$('url').value.trim(); if(!u) return;
-  toast('Update gestartet'); log('Update von '+u,'y');
-  try{ await fetch('/update?url='+encodeURIComponent(u)); }catch(e){}
-});
+$('ghbtn').onclick=async()=>{toast('Update von GitHub gestartet');log('Update von GitHub angefordert');try{await fetch('/github',{cache:'no-store'});}catch(e){}};
+$('urlbtn').onclick=async()=>{const u=$('url').value.trim();if(!u)return;toast('Update gestartet');log('Update von '+u);try{await fetch('/update?url='+encodeURIComponent(u));}catch(e){}};
 $('url').value='%OTA_URL%';
 
-poll(); setInterval(poll,1000);
+/* dezentes Einblenden */
+const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}}),{threshold:.08});
+document.querySelectorAll('.fade').forEach(el=>io.observe(el));
+
+poll();setInterval(poll,1000);
 })();
 </script>
 </body>
