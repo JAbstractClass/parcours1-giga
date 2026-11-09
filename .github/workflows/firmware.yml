@@ -1,0 +1,71 @@
+name: Firmware bauen und bereitstellen
+
+# Bei jedem Push auf main: Sketch kompilieren, OTA-Datei bauen, auf GitHub Pages legen.
+# Der Giga prueft jede Minute version.txt und spielt neue Firmware selbst ein.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: arduino/setup-arduino-cli@v2
+
+      - name: Board-Paket und Bibliotheken
+        run: |
+          arduino-cli core update-index
+          arduino-cli core install arduino:mbed_giga@4.6.0
+          arduino-cli lib install Servo@1.3.0 Arduino_Portenta_OTA@1.2.1
+
+      - name: version.h erzeugen
+        run: |
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          REPO="${GITHUB_REPOSITORY#*/}"
+          SHA="${GITHUB_SHA::7}"
+          printf '#pragma once\n#define FW_COMMIT "%s"\n#define OTA_BASIS "https://%s.github.io/%s"\n' "$SHA" "$OWNER" "$REPO" > Parcours1/version.h
+          cat Parcours1/version.h
+          echo "SHA=$SHA" >> "$GITHUB_ENV"
+
+      - name: Kompilieren
+        run: arduino-cli compile -b arduino:mbed_giga:giga --output-dir build Parcours1
+
+      - name: OTA-Datei bauen
+        run: |
+          cc -O2 -w -o tools/lzss tools/lzss_main.c
+          tools/lzss --encode build/Parcours1.ino.bin build/Parcours1.lzss
+          tools/lzss --decode build/Parcours1.lzss build/check.bin
+          cmp build/Parcours1.ino.bin build/check.bin
+          mkdir -p site
+          python3 -I tools/make_ota.py build/Parcours1.lzss site/Parcours1.ota
+          cp build/Parcours1.ino.bin site/Parcours1.bin
+          echo "$SHA" > site/version.txt
+          printf '<!doctype html><meta charset="utf-8"><title>Parcours 1 Firmware</title><p>Firmware %s (%s)</p><p><a href="Parcours1.ota">Parcours1.ota</a> · <a href="Parcours1.bin">Parcours1.bin</a></p>\n' "$SHA" "$(date -u '+%Y-%m-%d %H:%M UTC')" > site/index.html
+          ls -l site
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
