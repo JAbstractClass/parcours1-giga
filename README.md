@@ -16,6 +16,16 @@ Ob der Build durchging: Tab **Actions** im Repo. Ist er rot, bleibt der Giga auf
 - **Taster:** Mitte (A4) = Aufzug an/aus, links (A5) = Stellweiche, rechts (A3) = Weichenhebel. Beim Einschalten nicht drücken.
 - **Serieller Monitor** (115200 Baud, `./monitor.command`): `a` Aufzug, `w` Weiche, `h` Hebel, `s` Stoppstelle, `l` LEDs, `x` alles stoppen, `?` Status, `t`/`m` Taster, `n` WLANs anzeigen.
 
+## Dashboard bearbeiten
+
+Quelle ist `Parcours1/dashboard.html`. Vorschau ohne Giga (simuliert alle Funktionen):
+
+```
+python3 tools/dashboard_preview.py     # dann http://localhost:8080
+```
+
+Beim Bauen wird daraus automatisch `Parcours1/Dashboard.h` erzeugt (`tools/html2h.py`), nicht von Hand ändern.
+
 ## Belegung
 
 | Bauteil | Shield | Giga-Pins |

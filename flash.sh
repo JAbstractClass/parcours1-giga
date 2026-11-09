@@ -14,6 +14,7 @@ else
   SHA=lokal
 fi
 printf '#pragma once\n#define FW_COMMIT "%s"\n' "$SHA" > Parcours1/version.h
+python3 -I tools/html2h.py
 echo "== Baue Firmware $SHA fuer $PORT"
 $CLI compile -b arduino:mbed_giga:giga Parcours1 | grep -E "Sketch verwendet|error" || true
 $CLI upload -b arduino:mbed_giga:giga -p "$PORT" Parcours1

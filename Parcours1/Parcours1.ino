@@ -14,6 +14,7 @@
 //   l = LEDs     t = Taster-Rohwerte   ? = Status
 //   m = Taster-Rohwerte live an/aus      p = alle Analogpins
 //   x = alles stoppen   n = WLANs in Reichweite anzeigen
+//   g = GitHub-Verbindung testen   u = Update von GitHub jetzt laden
 //
 // WLAN, Weboberflaeche und OTA-Update: siehe Web.ino und arduino_secrets.h
 
@@ -189,6 +190,8 @@ bool befehl(char c) {
     case 't': tasterRoh();          return true;
     case '?': status(); webStatusSeriell(); return true;
     case 'n': wlanScan();           return true;
+    case 'g': githubDiagnose();     return true;
+    case 'u': githubUpdateAnfordern(); return true;
     case 'p': scanAnalog();         return true;
     case 'm': live = !live;         return true;
   }

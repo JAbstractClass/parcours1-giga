@@ -10,8 +10,11 @@
 //   /update?url= Firmware per WLAN laden (.ota-Datei, z. B. von ./ota.sh bereitgestellt)
 
 #include <WiFi.h>
+#include <WiFiUdp.h>
 #include <Arduino_Portenta_OTA.h>
 #include "arduino_secrets.h"
+#include "Zertifikate.h"
+#include "utility/https_request.h"
 
 // version.h wird von GitHub Actions (bzw. ./flash.sh) erzeugt: FW_COMMIT + OTA_BASIS
 #if __has_include("version.h")
@@ -38,83 +41,67 @@ unsigned long letztePruefung = 0;
 bool erstePruefung = true;
 String fehlVersion = "";      // Auto-Update dieser Version ist fehlgeschlagen -> nicht endlos wiederholen
 
-static const char HTML_SEITE[] = R"HTML(<!doctype html>
-<html lang="de"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Parcours 1</title>
-<style>
-:root{--bg:#f4f5f7;--card:#fff;--text:#1d2330;--muted:#667085;--on:#1f9d55;--off:#c0c6d0;--accent:#2563eb;--warn:#b42318}
-@media (prefers-color-scheme:dark){:root{--bg:#12151b;--card:#1c212b;--text:#e8ebf0;--muted:#98a2b3;--off:#3a4250}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.4 system-ui,sans-serif}
-main{max-width:560px;margin:0 auto;padding:16px}
-h1{font-size:22px;margin:4px 0 2px}.sub{color:var(--muted);font-size:13px;margin-bottom:14px}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-button{font:inherit;border:0;border-radius:12px;padding:16px 12px;background:var(--card);color:var(--text);
-box-shadow:0 1px 3px #0002;cursor:pointer;text-align:left;min-height:72px}
-button:active{transform:scale(.98)}
-button b{display:block;font-size:16px}button span{font-size:13px;color:var(--muted)}
-.dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--off);margin-right:6px;vertical-align:middle}
-.on .dot{background:var(--on)}
-.stop{grid-column:1/-1;background:var(--warn);color:#fff;text-align:center;min-height:56px}
-.stop span{color:#fff}
-.card{background:var(--card);border-radius:12px;padding:14px;margin-top:14px;box-shadow:0 1px 3px #0002}
-.card h2{font-size:15px;margin:0 0 8px}
-input{width:100%;font:inherit;padding:10px;border-radius:8px;border:1px solid var(--off);background:var(--bg);color:var(--text)}
-.row{display:flex;gap:8px;margin-top:8px}.row button{min-height:0;padding:10px 14px;text-align:center;background:var(--accent);color:#fff}
-#msg{font-size:13px;color:var(--muted);margin-top:8px;min-height:1em}
-.offline{color:var(--warn)}
-</style></head><body><main>
-<h1>Parcours 1</h1>
-<div class="sub" id="info">verbinde …</div>
-<div class="grid">
- <button id="b_a" onclick="cmd('a')"><b><i class="dot"></i>Aufzug</b><span id="s_a">–</span></button>
- <button id="b_l" onclick="cmd('l')"><b><i class="dot"></i>LEDs</b><span id="s_l">–</span></button>
- <button onclick="cmd('w')"><b>Stellweiche</b><span id="s_w">–</span></button>
- <button onclick="cmd('h')"><b>Weichenhebel</b><span id="s_h">–</span></button>
- <button id="b_s" onclick="cmd('s')"><b><i class="dot"></i>Stoppstelle</b><span id="s_s">–</span></button>
- <button class="stop" onclick="cmd('x')"><b>Alles stoppen</b></button>
-</div>
-<div class="card">
- <h2>Firmware-Update</h2>
- <div class="sub" id="gh">GitHub: –</div>
- <div class="row"><button onclick="gh()">Jetzt von GitHub laden</button></div>
- <h2 style="margin-top:14px">Update von eigener Adresse</h2>
- <input id="url" spellcheck="false">
- <div class="row"><button onclick="upd()">Update starten</button></div>
- <div id="msg"></div>
-</div>
-</main><script>
-let ver=null;
-const $=id=>document.getElementById(id);
-function show(s){
- $('info').className='sub';
- $('info').textContent='Firmware '+s.version+' · '+s.ip+(s.ota?' · '+s.ota:'');
- $('b_a').className=s.aufzug?'on':'';$('s_a').textContent=s.aufzug?'läuft':'aus';
- $('b_l').className=s.leds?'on':'';$('s_l').textContent=s.leds?'an':'aus';
- $('b_s').className=s.stopp?'on':'';$('s_s').textContent=s.stopp?'offen':'zu';
- $('s_w').textContent='Stellung '+s.weiche;$('s_h').textContent='Stellung '+s.hebel;
- if(ver&&ver!==s.version)$('msg').textContent='Neue Firmware läuft: '+s.version;
- ver=s.version;
- $('gh').textContent='GitHub: '+(s.github||'noch nicht geprüft')+(s.auto?' · automatisch an':' · automatisch aus (lokale Firmware)');
+// Weboberflaeche: Quelle ist dashboard.html, Dashboard.h wird daraus erzeugt (tools/html2h.py)
+#include "Dashboard.h"
+
+// ---------- Uhrzeit (fuer HTTPS noetig: sonst gelten Zertifikate als "noch nicht gueltig") ----------
+bool zeitGesetzt = false;
+
+bool ntpZeit() {
+  WiFiUDP udp;
+  if (!udp.begin(2390)) return false;
+  uint8_t pkt[48] = {0};
+  pkt[0] = 0b11100011;               // LI, Version 4, Client
+  bool ok = false;
+  for (int versuch = 0; versuch < 3 && !ok; versuch++) {
+    udp.beginPacket("pool.ntp.org", 123);
+    udp.write(pkt, sizeof(pkt));
+    udp.endPacket();
+    unsigned long t0 = millis();
+    while (millis() - t0 < 1500) {
+      if (udp.parsePacket() >= 48) {
+        uint8_t r[48];
+        udp.read(r, 48);
+        unsigned long sek = ((unsigned long)r[40] << 24) | ((unsigned long)r[41] << 16) | ((unsigned long)r[42] << 8) | r[43];
+        set_time(sek - 2208988800UL);  // NTP (1900) -> Unix (1970)
+        ok = true;
+        break;
+      }
+      delay(10);
+    }
+  }
+  udp.stop();
+  return ok;
 }
-async function poll(){
- try{const r=await fetch('/status',{cache:'no-store'});show(await r.json());}
- catch(e){$('info').className='sub offline';$('info').textContent='keine Verbindung zum Giga …';}
+
+void zeitSicherstellen() {
+  if (zeitGesetzt) return;
+  zeitGesetzt = ntpZeit();
+  Serial.print("Uhrzeit: ");
+  if (zeitGesetzt) { time_t t = time(NULL); Serial.print(ctime(&t)); }
+  else Serial.println("NTP fehlgeschlagen");
 }
-async function cmd(c){try{const r=await fetch('/cmd?c='+c);show(await r.json());}catch(e){}}
-async function upd(){
- const u=$('url').value.trim();if(!u)return;
- $('msg').textContent='Update läuft – Giga lädt Firmware und startet neu (ca. 30 s) …';
- try{await fetch('/update?url='+encodeURIComponent(u));}catch(e){}
+
+// ---------- HTTPS mit eingebautem Zertifikat ----------
+// Die Zertifikatsliste auf dem Board (/wlan/cacert.pem) funktioniert fuer GitHub nicht
+// (Fehler -3011). Deshalb wird ISRG Root X1 direkt mitgegeben.
+// Rueckgabe: HTTP-Statuscode (200 = ok) oder negativer Fehlercode.
+int httpsAbruf(const String& url, mbed::Callback<void(const char*, uint32_t)> cbk) {
+  zeitSicherstellen();
+  HttpsRequest* req = new HttpsRequest(WiFi.getNetwork(), ISRG_ROOT_X1_PEM, HTTP_GET, url.c_str(), cbk);
+  HttpResponse* rsp = req->send(NULL, 0);
+  int code;
+  if (!rsp) {
+    code = req->get_error();
+    if (code >= 0) code = -1;
+  } else {
+    unsigned long t0 = millis();
+    while (!rsp->is_message_complete() && millis() - t0 < 60000) delay(10);
+    code = rsp->is_message_complete() ? (int)rsp->get_status_code() : -2;
+  }
+  delete req;
+  return code;
 }
-async function gh(){
- $('msg').textContent='Update von GitHub läuft – Giga lädt Firmware und startet neu (ca. 30 s) …';
- try{await fetch('/github');}catch(e){}
-}
-$('url').value='%OTA_URL%';
-poll();setInterval(poll,1000);
-</script></body></html>
-)HTML";
 
 // ---------- WLAN ----------
 void wlanScan() {
@@ -186,7 +173,9 @@ String statusJson() {
   s += ",\"version\":\""; s += FW_VERSION;
   s += "\",\"ip\":\"";    s += WiFi.localIP().toString();
   s += "\",\"datum\":\"";  s += FW_DATUM;
-  s += "\",\"github\":\""; s += neuesteVersion;
+  s += "\",\"uptime\":";   s += String(millis() / 1000);
+  s += ",\"rssi\":";        s += String(WiFi.RSSI());
+  s += ",\"github\":\""; s += neuesteVersion;
   s += "\",\"auto\":";     s += autoUpdate() ? "true" : "false";
   s += ",\"ota\":\"";     s += otaMeldung;
   s += "\"}";
@@ -269,7 +258,7 @@ void webLoop() {
     if (cm.length() == 1 && strchr("awhslx", cm[0])) befehl(cm[0]);
     antwort(c, "application/json", statusJson());
   } else if (pfad.startsWith("/github")) {
-    otaUrl = String(OTA_BASIS) + "/Parcours1.ota";
+    githubUpdateAnfordern();
     antwort(c, "text/plain; charset=utf-8", "Update von GitHub gestartet");
   } else if (pfad.startsWith("/update")) {
     String u = param(pfad, "url");
@@ -301,9 +290,25 @@ void otaStart(const String& url) {
   }
 
   unsigned long t0 = millis();
-  int n = ota.downloadAndDecompress(url.c_str(), url.startsWith("https://"));
+  int n;
+  if (url.startsWith("https://")) {
+    // selbst laden (eigenes Zertifikat), Datei liegt dann dort, wo die Bibliothek sie erwartet
+    FILE* f = fopen("/fs/UPDATE.BIN.LZSS", "wb");
+    if (!f) { otaMeldung = "OTA-Datei kann nicht angelegt werden"; Serial.println(otaMeldung); return; }
+    uint32_t bytes = 0;
+    int code = httpsAbruf(url, [f, &bytes](const char* b, uint32_t len) { fwrite(b, 1, len, f); bytes += len; });
+    fclose(f);
+    if (code != 200) {
+      remove("/fs/UPDATE.BIN.LZSS");
+      otaMeldung = "Download fehlgeschlagen (HTTP/Code " + String(code) + ")"; Serial.println(otaMeldung); return;
+    }
+    Serial.print(bytes); Serial.println(" Bytes geladen, pruefe und entpacke ...");
+    n = ota.decompress();     // prueft Laenge, CRC und Board-Kennung
+  } else {
+    n = ota.downloadAndDecompress(url.c_str(), false);
+  }
   if (n <= 0) {
-    otaMeldung = "Download fehlgeschlagen (Fehler " + String(n) + ")"; Serial.println(otaMeldung); return;
+    otaMeldung = "Update-Datei ungueltig (Fehler " + String(n) + ")"; Serial.println(otaMeldung); return;
   }
   Serial.print(n); Serial.print(" Bytes in "); Serial.print((millis() - t0) / 1000.0); Serial.println(" s");
 
@@ -324,17 +329,22 @@ void otaStart(const String& url) {
 
 bool autoUpdate() { return strcmp(FW_VERSION, "lokal") != 0; }
 
+int letzterDownloadCode = 0;
+
 String githubVersion() {
   String text;
-  String url = String(OTA_BASIS) + "/version.txt";
-  int n = WiFi.download((char*)url.c_str(), true, [&text](const char* b, uint32_t len) {
+  int code = httpsAbruf(String(OTA_BASIS) + "/version.txt", [&text](const char* b, uint32_t len) {
     for (uint32_t i = 0; i < len && text.length() < 64; i++) text += b[i];
   });
+  letzterDownloadCode = code;
   text.trim();
-  if (n <= 0 || text.length() < 7 || text.length() > 40) return "";
+  if (code != 200 || text.length() < 7 || text.length() > 40) return "";
   for (unsigned i = 0; i < text.length(); i++) if (!isHexadecimalDigit(text[i])) return "";
   return text;
 }
+
+// Update von GitHub beim naechsten loop ausfuehren (Knopf, serieller Befehl 'u')
+void githubUpdateAnfordern() { otaUrl = String(OTA_BASIS) + "/Parcours1.ota"; }
 
 void githubPruefen() {
   // nicht pruefen, waehrend eine Weiche faehrt (die Abfrage blockiert ~1-2 s)
@@ -345,7 +355,10 @@ void githubPruefen() {
   letztePruefung = millis();
 
   String v = githubVersion();
-  if (v.length() == 0) { Serial.println("GitHub: Version nicht abrufbar"); return; }
+  if (v.length() == 0) {
+    Serial.print("GitHub: Version nicht abrufbar (Code "); Serial.print(letzterDownloadCode); Serial.println(")");
+    return;
+  }
   if (v != neuesteVersion) { Serial.print("GitHub: neueste Version "); Serial.println(v); }
   neuesteVersion = v;
   if (autoUpdate() && v != FW_VERSION && v != fehlVersion) {
@@ -354,4 +367,15 @@ void githubPruefen() {
     fehlVersion = v;   // nur erreicht, wenn das Update fehlschlug (sonst Neustart)
     Serial.println("GitHub: Auto-Update fehlgeschlagen, erst wieder bei neuer Version oder per Knopf");
   }
+}
+
+// Diagnose ('g' im seriellen Monitor): Namensaufloesung und HTTPS-Abruf testen
+void githubDiagnose() {
+  IPAddress ip;
+  String host = String(OTA_BASIS);
+  host.replace("https://", ""); host = host.substring(0, host.indexOf('/'));
+  int r = WiFi.hostByName(host.c_str(), ip);
+  Serial.print("DNS "); Serial.print(host); Serial.print(" -> "); Serial.print(r == 1 ? "ok " : "Fehler "); Serial.println(ip);
+  String v = githubVersion();
+  Serial.print("version.txt: HTTP/Code "); Serial.print(letzterDownloadCode); Serial.print(", Inhalt '"); Serial.print(v); Serial.println("'");
 }

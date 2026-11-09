@@ -41,7 +41,9 @@ jobs:
           echo "SHA=$SHA" >> "$GITHUB_ENV"
 
       - name: Kompilieren
-        run: arduino-cli compile -b arduino:mbed_giga:giga --output-dir build Parcours1
+        run: |
+          python3 -I tools/html2h.py
+          arduino-cli compile -b arduino:mbed_giga:giga --output-dir build Parcours1
 
       - name: OTA-Datei bauen
         run: |

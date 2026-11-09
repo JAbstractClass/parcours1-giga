@@ -12,6 +12,7 @@ PORT=8000
 
 [[ -x tools/lzss ]] || cc -O2 -w -o tools/lzss tools/lzss_main.c
 
+python3 -I tools/html2h.py
 echo "== Kompiliere ..."
 $CLI compile -b $FQBN --output-dir $OUT Parcours1 | grep -E "Sketch verwendet|error" || true
 [[ -f $OUT/Parcours1.ino.bin ]] || { echo "Kompilieren fehlgeschlagen"; exit 1; }
