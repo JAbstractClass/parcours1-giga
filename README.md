@@ -46,3 +46,4 @@ Taster werden digital mit internem Pull-up gelesen: Die Analogwerte zeigen mit d
 - Lokal per USB mit ungespeicherten Änderungen gebaut → Firmware heißt `lokal` und macht **kein** Auto-Update (damit lokale Tests nicht überschrieben werden). Über den Knopf „Jetzt von GitHub laden“ geht es trotzdem.
 - WLAN-Daten stehen in `Parcours1/arduino_secrets.h` (öffentlich im Repo, bewusst so entschieden). eduroam geht mit dem Giga nicht (WPA2-Enterprise).
 - Motoren brauchen das 9 V-Netzteil, USB allein reicht nicht.
+- Datenvolumen: Der Giga fragt jede Minute per HTTPS die Version ab, ein Update lädt ca. 380 KB. Das Dashboard zeigt eine Schätzung („Daten des Giga“). Den Gesamtverbrauch des iPhones kennt nur das iPhone selbst (Einstellungen → Mobilfunk). Abfrage-Intervall: `UPDATE_PRUEF_MS` in `Web.ino`.
