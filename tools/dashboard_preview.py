@@ -21,6 +21,8 @@ S = {"aufzug": False, "leds": True, "stopp": False, "weiche": 1, "hebel": 1,
 
 def status():
     if S.get("_zu") and time.time() > S["_zu"]: S["stopp"] = False; S.pop("_zu")
+    S["kugel"] = int(time.time() / 1.5) % 3 != 0   # Sensor simulieren
+    S["pegel"] = "A6=" + ("0" if S["kugel"] else "1")
     s = {k: v for k, v in S.items() if k[0] != "_"}; s["uptime"] = int(time.time() - START)
     s["abrufe"] = s["uptime"] // 60 + 1; s["daten"] = s["abrufe"] * 8
     if S["aufzug"]:  # Stoppstelle taktet wie auf dem Giga

@@ -209,6 +209,18 @@ body.xmas .xm .ic{background:linear-gradient(140deg,#c81d25,#1f7a3a)}
 .prog{height:4px;border-radius:2px;background:var(--card3);margin-top:10px;overflow:hidden;display:none}
 .prog i{display:block;height:100%;width:0;background:var(--blue);transition:width .2s}
 .prog.on{display:block}
+.sen{display:flex;align-items:center;gap:14px}
+.sen .led{position:relative;width:46px;height:46px;border-radius:50%;flex:none;background:var(--card2);border:1px solid var(--line);display:grid;place-items:center;transition:background .15s,box-shadow .15s}
+.sen .led::after{content:"";width:16px;height:16px;border-radius:50%;background:var(--faint);transition:background .15s}
+.sen.on .led{background:rgba(52,211,153,.16);box-shadow:0 0 0 6px rgba(52,211,153,.08),0 0 24px rgba(52,211,153,.35)}
+.sen.on .led::after{background:var(--ok);box-shadow:0 0 12px var(--ok)}
+.sen.off .led::after{background:var(--card3)}
+.sen .tx{flex:1;min-width:0}.sen .tx b{display:block;font:650 17px var(--sans)}.sen .tx small{display:block;font:12px var(--mono);color:var(--muted);margin-top:3px}
+.sen .n{text-align:right}.sen .n b{display:block;font:700 26px var(--sans);font-variant-numeric:tabular-nums;letter-spacing:-.02em}.sen .n small{font:11px var(--sans);color:var(--muted)}
+.sen .n b.bump{animation:bump .5s var(--ease)}
+@keyframes bump{30%{transform:scale(1.25);color:var(--ok)}}
+#sen_t{display:block;width:100%;height:34px;margin-top:12px}
+#hs_k.on i{background:rgba(52,211,153,.25);animation:none}#hs_k.on i::after{background:var(--ok)}
 #snow{position:fixed;inset:0;z-index:7;pointer-events:none;display:none}
 body.xmas #snow{display:block}
 body.xmas #stage{background:radial-gradient(90% 70% at 50% 40%,#18233a,var(--bg) 75%)}
@@ -265,6 +277,7 @@ body.xmas #stage{background:radial-gradient(90% 70% at 50% 40%,#18233a,var(--bg)
  <button class="hs" id="hs_s" data-c="s"><i></i><span><b>Stoppstelle</b><em></em></span></button>
  <button class="hs" id="hs_w" data-c="w"><i></i><span><b>Weiche 1</b><em></em></span></button>
  <button class="hs" id="hs_h" data-c="h"><i></i><span><b>Weiche 2</b><em></em></span></button>
+ <button class="hs" id="hs_k" data-go="cfg"><i></i><span><b>Sensor</b><em></em></span></button>
  <button class="hs" id="hs_l" data-c="l"><i></i><span><b>Licht</b><em></em></span></button>
  <div class="hero"><div id="hl"><b id="hlt">Verbinde …</b></div><p id="sub">Parcours 1 wird gesucht</p></div>
 </div>
@@ -278,6 +291,11 @@ body.xmas #stage{background:radial-gradient(90% 70% at 50% 40%,#18233a,var(--bg)
    <button class="qb" id="qb_s" data-c="s"><span class="c"><svg class="i"><use href="#i-drop"/></svg></span>Kugel frei</button>
    <button class="qb" id="qb_l" data-c="l"><span class="c"><svg class="i"><use href="#i-bulb"/></svg></span>Licht</button>
    <button class="qb danger" id="qb_x" data-c="x"><span class="c"><svg class="i"><use href="#i-power"/></svg></span>Not-Aus</button>
+  </div>
+
+  <div class="card" id="sen_c">
+   <div class="sen" id="sen"><span class="led"></span><span class="tx"><b id="sen_s">Kugelsensor</b><small id="sen_p">–</small></span><span class="n"><b id="sen_n">0</b><small>Kugeln durch</small></span></div>
+   <canvas id="sen_t" title="Sensor, letzte 20 Sekunden"></canvas>
   </div>
 
   <div class="card">
@@ -372,7 +390,7 @@ const $=id=>document.getElementById(id),B=document.body;
 const DPR=()=>Math.min(devicePixelRatio||1,3);
 const MONO=getComputedStyle(document.documentElement).getPropertyValue('--mono');
 const P1=window.P1={S:null,events:[],cmd:null,view:'o',amp:'g'};
-let UPL=false,lastOk=0,lat=0,runMs=0,runSince=null,swc=0,up=null,stT=0,ota='',TAKT=8000,TAB='home';
+const SEN=[];let polling=false,UPL=false,lastOk=0,lat=0,runMs=0,runSince=null,swc=0,up=null,stT=0,ota='',TAKT=8000,TAB='home';
 
 const dur=s=>{s=Math.max(0,Math.floor(s));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return(h?h+':':'')+String(m).padStart(2,'0')+':'+String(x).padStart(2,'0')};
 let tt;function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),2400);}
@@ -448,6 +466,11 @@ function render(s){
   }else log('Verbunden · '+s.ip);
   $('k_sw').textContent=s.kugeln!==undefined?s.kugeln:swc;
   rowSet('z_k',!!s.kugel,(!s.sensor?'Aus · gibt ohne Prüfung frei':s.kugel?'Kugel wartet':'Keine Kugel')+(s.pegel?' · '+s.pegel:''));
+  {const e=$('sen');e.classList.toggle('on',!!s.kugel);e.classList.toggle('off',!s.sensor);
+   $('sen_s').textContent=s.kugel?'Kugel erkannt':'Keine Kugel';
+   $('sen_p').textContent=(s.pegel||'')+(s.sensor?' · Automatik prüft Sensor':' · Prüfung aus');
+   const nb=$('sen_n');if(nb.textContent!==String(s.kugeln)){nb.textContent=s.kugeln;nb.classList.remove('bump');nb.offsetWidth;nb.classList.add('bump');}
+   hsSet('k',!!s.kugel,s.kugel?'Kugel':'leer');SEN.push([performance.now(),!!s.kugel]);}
   B.classList.toggle('xmas',!!s.weihnacht);$('xm_b').classList.toggle('on',!!s.weihnacht);
   const lm=s.lied?Math.floor(s.lied/60)+':'+String(s.lied%60).padStart(2,'0'):'';
   if(!UPL)$('xm_s').textContent=!s.lied?'Noch kein Lied auf dem Giga · erst hochladen':s.weihnacht?'Es schneit · Lied läuft ('+lm+')':'Lied auf dem Giga ('+lm+') · Schnee und Musik';
@@ -475,7 +498,7 @@ setInterval(()=>{
 
 /* Kommunikation */
 async function get(u){const t=performance.now();const r=await fetch(u,{cache:'no-store'});const j=await r.json();lat=Math.round(performance.now()-t);lastOk=Date.now();return j;}
-async function poll(){try{render(await get('/status'));}catch(e){}}
+async function poll(){if(polling)return;polling=true;try{render(await get('/status'));}catch(e){}polling=false;}
 const QB={a:'qb_a',s:'qb_s',l:'qb_l',x:'qb_x'};
 async function cmd(c){
   if(navigator.vibrate)navigator.vibrate(8);
@@ -640,7 +663,20 @@ $('up_f').onchange=async e=>{
 })();
 
 cfgGet('',true);   /* Takt der Stoppstelle fuer den Countdown */
-poll();setInterval(poll,1000);
+/* Sensor-Verlauf der letzten 20 s */
+(()=>{const c=$('sen_t'),g=c.getContext('2d'),WIN=20000;
+  (function fr(){const d=DPR(),w=c.clientWidth,h=c.clientHeight;if(w){if(c.width!==w*d){c.width=w*d;c.height=h*d;}
+    const now=performance.now();while(SEN.length>2&&now-SEN[1][0]>WIN)SEN.shift();
+    g.setTransform(d,0,0,d,0,0);g.clearRect(0,0,w,h);g.fillStyle='rgba(255,255,255,.05)';g.fillRect(0,h-6,w,2);
+    g.fillStyle='#34d399';
+    const X=t=>w*(1-(now-t)/WIN);   /* zusammenhaengende "Kugel"-Abschnitte als ein Balken */
+    for(let i=0;i<SEN.length;i++){if(!SEN[i][1]||(i&&SEN[i-1][1]))continue;let j=i;while(j+1<SEN.length&&SEN[j+1][1])j++;
+      const x0=Math.max(0,X(SEN[i][0])),x1=j+1<SEN.length?X(SEN[j+1][0]):w;g.beginPath();g.roundRect(x0,4,Math.max(3,x1-x0),h-12,4);g.fill();}
+    g.fillStyle='#555c6b';g.font='10px '+MONO;g.fillText('−20 s',0,h);g.textAlign='right';g.fillText('jetzt',w,h);g.textAlign='left';}
+    requestAnimationFrame(fr);})();
+})();
+
+poll();setInterval(poll,300);   /* ~3x pro Sekunde: Sensor wirkt live */
 })();
 </script>
 
@@ -864,7 +900,7 @@ const EVPOS={a:V(LIFT_X,LIFT_TOP+.4,.1),s:N.gate,w:N.lsw,h:N.wsw,l:V(-1,TH+.4,-1
 
 /* ---------- Kamera: Ziehen dreht, Rad/Zwei Finger zoomt, "Kugel folgen" haengt sich an eine Kugel ---------- */
 const stage=document.getElementById('stage');
-const HOT={a:V(LIFT_X,5.4,.7),s:N.gate,w:N.lsw,h:N.wsw,l:V(-1,TH+.7,-1.3)};
+const HOT={a:V(LIFT_X,5.4,.7),s:N.gate,w:N.lsw,h:N.wsw,l:V(-1,TH+.7,-1.3),k:frameAt('top',SEG.top.len-1.3).p.clone().add(V(0,.9,0))};
 const hs={};for(const k in HOT)hs[k]=document.getElementById('hs_'+k);
 const OV_T=V(-.5,5.4,0),OV_R=48,FOLLOW_R=17;
 const orb={az:.69,el:.24,d:1};
