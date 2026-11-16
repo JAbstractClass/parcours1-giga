@@ -45,8 +45,8 @@ Beim Bauen wird daraus automatisch `Parcours1/Dashboard.h` erzeugt (`tools/html2
 | Stoppstelle (Servo) | SERVO 1 | D2 |
 | Rainbow-LED 1 / 2 | M1 Klemme 16 / 17 → GND | D16 / D17 |
 | Taster links / Mitte / rechts | A5 / A4 / A3 → GND | |
-| Kugelsensor (IR-Reflex, Sensorkit B04) | VCC → **3,3 V** (nie 5 V), GND → GND, DOUT → **P15** (8er-Stiftleiste unten) | D15 |
-| Lautsprecher (2 Pins) | M6, mit ca. 100 Ω Vorwiderstand in Reihe | D12/D13 |
+| Kugelsensor (IR-Reflex, Sensorkit B04) | VCC → **3,3 V** (nie 5 V), GND → GND, DOUT → IN A6 | A6 |
+| Lautsprecher (2 Pins) | Pin 1 → **P15** (8er-Stiftleiste unten) über **mind. 470 Ω**, Pin 2 → GND | D15 |
 | Statuslampe RGB-Modul (B09, optional) | R → A0/D18, G → A1/D19, B → A2, „–“ → GND | |
 
 Die Stoppstelle ist kein Motor an einem M-Ausgang, sondern ein Servo am 3-poligen Pfostenstecker SERVO 1 (Signal an ~2, VCC, GND) und wird über die Servo-Bibliothek mit Winkeln gestellt (`STOPP_ZU` / `STOPP_AUF`).

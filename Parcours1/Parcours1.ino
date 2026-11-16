@@ -42,14 +42,15 @@ const int RGB_G[] = {A1, 19};
 const int RGB_B[] = {A2};
 
 // Kugelsensor an der Stoppstelle: IR-Reflexsensor (Sensorkit B04), Versorgung 3,3 V (nie 5 V!).
-// DOUT an Pin P15 der 8er-Stiftleiste unten (= D15), "Kugel" = LOW.
-const int SENSOR_PINS[] = {15};
-const char* SENSOR_NAMEN[] = {"P15"};
+// DOUT an IN A6, "Kugel" = LOW.
+const int SENSOR_PINS[] = {A6};
+const char* SENSOR_NAMEN[] = {"A6"};
 const int N_SENSOR = 1;
-// Lautsprecher (2 Pins) an M6 (D12/D13) ueber den Motortreiber, mit ca. 100 Ohm Vorwiderstand.
-// D13 liefert das Audiosignal als schnelle PWM (eigener Timer TIM12; D10 an M5 teilt sich TIM1 mit dem Aufzug).
-const int LAUTSPR_A = 13;      // PWM
-const int LAUTSPR_B = 12;      // bleibt LOW
+// Lautsprecher (2 Pins): ein Pin an P15 der 8er-Stiftleiste unten (= D15), der andere an GND.
+// Unbedingt mindestens 470 Ohm in Reihe: der Giga-Pin liefert nur wenige mA (16-Ohm-Lautsprecher direkt = Pin kaputt).
+// D15 liefert das Audiosignal als schnelle PWM. Teilt sich der Timer mit einem Motor-Pin, laeuft dessen PWM
+// waehrend der Musik ebenfalls schnell; nach der Musik wird der Takt wieder auf 500 Hz gesetzt.
+const int LAUTSPR_A = 15;      // PWM
 
 const int TASTER_L = A5;     // T_L
 const int TASTER_M = A4;     // T_M
@@ -282,7 +283,7 @@ void allesStopp() {
 extern bool otaBereit;        // Flash-Speicher eingebunden (Web.ino)
 const char* LIED_DATEI = "/fs/lied.raw";
 const int AUDIO_RATE = 8000;
-int LAUTSTAERKE = 40;           // 0..100 %
+int LAUTSTAERKE = 100;          // 0..100 %
 bool weihnacht = false;
 uint32_t liedBytes = 0;
 mbed::PwmOut* audioPwm = nullptr;
@@ -300,9 +301,11 @@ void audioIsr() {
 
 void lautsprecherStill() {
   audioTick.detach();
-  if (audioPwm) audioPwm->write(0);
-  else { pinMode(LAUTSPR_A, OUTPUT); digitalWrite(LAUTSPR_A, LOW); }
-  digitalWrite(LAUTSPR_B, LOW);
+  if (audioPwm) {                       // Timer-Takt fuer evtl. mitbenutzende Motor-Pins zuruecksetzen (analogWrite: 2 ms)
+    audioPwm->write(0); audioPwm->period_ms(2);
+    delete audioPwm; audioPwm = nullptr;
+  }
+  pinMode(LAUTSPR_A, OUTPUT); digitalWrite(LAUTSPR_A, LOW);
 }
 
 void musikAus() {
@@ -386,7 +389,7 @@ void setup() {
   tasterInit(tM);
   tasterInit(tR);
   for (int i = 0; i < N_SENSOR; i++) pinMode(SENSOR_PINS[i], INPUT_PULLUP);
-  pinMode(LAUTSPR_A, OUTPUT); pinMode(LAUTSPR_B, OUTPUT); lautsprecherStill();
+  pinMode(LAUTSPR_A, OUTPUT); lautsprecherStill();
 
   Serial.println("Parcours 1 bereit.");
   Serial.println("a=Aufzug w=Stellweiche h=Weichenhebel s=Stoppstelle l=LEDs");

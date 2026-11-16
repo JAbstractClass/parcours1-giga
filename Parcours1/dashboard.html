@@ -519,7 +519,7 @@ const ACT=[
    ['stopp_auto','Automatisch freigeben, wenn der Aufzug läuft'],['stopp_takt','Abstand der Freigaben',1000,30000,500,sec],
    ['sensor_an','Nur freigeben, wenn der Sensor eine Kugel sieht'],['sensor_inv','Sensor-Signal umkehren'],
    ['stopp_nach','Mit Sensor: nach dem Durchrollen noch offen',0,1000,10,ms]]},
- {t:'Lautsprecher',d:'an M6 (D12/D13) · Weihnachtsmodus',test:['j','An / Aus'],p:[['laut','Lautstärke',0,100,5,v=>v+' %']]},
+ {t:'Lautsprecher',d:'an P15 (D15) über 470 Ω · Weihnachtsmodus',test:['j','An / Aus'],p:[['laut','Lautstärke',0,100,5,v=>v+' %']]},
  {t:'Licht',d:'Rainbow-LEDs an M1',test:['l','An / Aus'],p:[['led_blink','Status als Blinkcode zeigen']]}
 ];
 let CFG={};
