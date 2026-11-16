@@ -19,6 +19,10 @@ Param PARAMS[] = {
   {"stopp_auto",  &STOPP_AUTOMATIK,   0,   1,     0},
   {"stopp_takt",  &STOPP_INTERVALL_MS,1000,60000, 0},
   {"led_blink",   &LED_BLINKCODE,     0,   1,     0},
+  {"sensor_an",   &SENSOR_AN,         0,   1,     0},
+  {"sensor_inv",  &SENSOR_INV,        0,   1,     0},
+  {"stopp_nach",  &STOPP_NACHLAUF_MS, 0,   1000,  0},
+  {"laut",        &LAUTSTAERKE,       0,   100,   0},
 };
 const int N_PARAMS = sizeof(PARAMS) / sizeof(PARAMS[0]);
 const char* EINST_DATEI = "/fs/einst.txt";

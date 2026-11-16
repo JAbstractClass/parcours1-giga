@@ -14,12 +14,13 @@
 //   l = LEDs     t = Taster-Rohwerte   ? = Status
 //   m = Taster-Rohwerte live an/aus      p = alle Analogpins
 //   x = alles stoppen   n = WLANs in Reichweite anzeigen
-//   g = GitHub-Verbindung testen   u = Update von GitHub jetzt laden   v = Servo-Test
+//   g = GitHub-Verbindung testen   u = Update von GitHub jetzt laden   v = Servo-Test   j = Weihnachtsmodus
 //
 // WLAN, Weboberflaeche und OTA-Update: siehe Web.ino und arduino_secrets.h
 
 #include <Servo.h>
 #include "Typen.h"
+#include <mbed.h>
 #include <WiFi.h>   // hier, damit die Arduino-Prototypen fuer Web.ino WiFiClient kennen
 
 // ---------- Pinbelegung ----------
@@ -39,6 +40,13 @@ const int SERVO_STOPP2 = 3;  // SERVO 2: bekommt dasselbe Signal, falls der Serv
 const int RGB_R[] = {A0, 18};
 const int RGB_G[] = {A1, 19};
 const int RGB_B[] = {A2};
+
+// Kugelsensor an der Stoppstelle: IR-Reflexsensor (Sensorkit B04), Versorgung 3,3 V (nie 5 V!), DOUT -> IN A6
+const int SENSOR_KUGEL = A6;
+// Lautsprecher (2 Pins) an M6 (D12/D13) ueber den Motortreiber, mit ca. 100 Ohm Vorwiderstand.
+// D13 liefert das Audiosignal als schnelle PWM (eigener Timer TIM12; D10 an M5 teilt sich TIM1 mit dem Aufzug).
+const int LAUTSPR_A = 13;      // PWM
+const int LAUTSPR_B = 12;      // bleibt LOW
 
 const int TASTER_L = A5;     // T_L
 const int TASTER_M = A4;     // T_M
@@ -66,6 +74,9 @@ int STOPP_OFFEN_MS     = 180;   // Freigabe: so lange offen, dann sofort wieder 
 int STOPP_TEMPO        = 0;     // 0 = Servo faehrt so schnell er kann, sonst Grad pro 10 ms
 int STOPP_AUTOMATIK    = 1;     // Stoppstelle automatisch takten, solange der Aufzug laeuft
 int STOPP_INTERVALL_MS = 8000;  // Abstand zwischen automatischen Freigaben
+int SENSOR_AN          = 1;     // 1 = Stoppstelle gibt nur frei, wenn der Sensor eine Kugel sieht
+int SENSOR_INV         = 0;     // 1, falls der Sensor "Kugel" und "keine Kugel" vertauscht meldet
+int STOPP_NACHLAUF_MS  = 120;   // mit Sensor: so lange nach dem Durchrollen noch offen, dann zu
 const unsigned long ENTPRELL_MS = 40;
 
 // ---------- Zustand ----------
@@ -170,14 +181,45 @@ void setStopp(bool offen) {
 }
 
 // Eine Kugel freigeben: kurz auf, stoppUpdate macht nach STOPP_OFFEN_MS wieder zu
-void freigeben() {
-  if (!stoppOffen) setStopp(true);
+// ---------- Kugelsensor ----------
+bool kugelDa = false, kugelRoh = false;
+unsigned long kugelSeit = 0, kugelWeg = 0;
+uint32_t kugelZaehler = 0;      // Kugeln, die durch die Stoppstelle gerollt sind (seit Neustart)
+
+bool sensorRoh() {
+  bool r = digitalRead(SENSOR_KUGEL) == LOW;   // Modul zieht DOUT auf LOW, wenn es etwas sieht
+  return SENSOR_INV ? !r : r;
+}
+
+void sensorUpdate() {
+  bool r = sensorRoh();
+  if (r != kugelRoh) { kugelRoh = r; kugelSeit = millis(); }
+  if (millis() - kugelSeit < 25 || kugelDa == kugelRoh) return;   // entprellen
+  kugelDa = kugelRoh;
+  if (!kugelDa) {                                 // Kugel hat den Sensor verlassen = durchgerollt
+    kugelWeg = millis();
+    if (SENSOR_AN) { kugelZaehler++; Serial.print("Kugel durch, Zaehler "); Serial.println(kugelZaehler); }
+  }
+}
+
+// Eine Kugel freigeben: kurz auf, stoppUpdate macht wieder zu. Mit Sensor nur, wenn eine Kugel wartet.
+bool freigeben() {
+  if (stoppOffen) return true;
+  if (SENSOR_AN && !kugelDa) { Serial.println("Stoppstelle: keine Kugel da"); return false; }
+  if (!SENSOR_AN) kugelZaehler++;                 // ohne Sensor: Freigaben zaehlen
+  setStopp(true);
+  return true;
 }
 
 void stoppUpdate() {
   unsigned long dt = millis() - stoppZeit;
-  if (stoppOffen && dt >= (unsigned long)STOPP_OFFEN_MS) setStopp(false);          // immer: nur kurz offen
-  else if (STOPP_AUTOMATIK && aufzugAn && !stoppOffen && dt >= (unsigned long)STOPP_INTERVALL_MS) setStopp(true);
+  if (stoppOffen) {
+    // zu, sobald die Kugel durch ist (mit Sensor) oder spaetestens nach STOPP_OFFEN_MS
+    bool durch = SENSOR_AN && !kugelDa && kugelWeg > stoppZeit && millis() - kugelWeg >= (unsigned long)STOPP_NACHLAUF_MS;
+    if (durch || dt >= (unsigned long)STOPP_OFFEN_MS) setStopp(false);
+  } else if (STOPP_AUTOMATIK && aufzugAn && dt >= (unsigned long)STOPP_INTERVALL_MS) {
+    if (!freigeben()) stoppZeit = millis() - STOPP_INTERVALL_MS + 300;   // keine Kugel: gleich nochmal schauen
+  }
 }
 
 void status() {
@@ -226,6 +268,79 @@ void allesStopp() {
   motor(WEICHE_A, WEICHE_B, 0); weiche.aktiv = false;
   motor(HEBEL_A, HEBEL_B, 0);   hebel.aktiv = false;
   setStopp(false);
+  musikAus();
+}
+
+// ---------- Lautsprecher / Weihnachtsmodus ----------
+// Das Lied wird im Dashboard hochgeladen (dort aus MP3 umgewandelt) und liegt als
+// 8 kHz / 8 Bit / mono Rohdaten im Flash (/fs/lied.raw) - nicht in der Firmware und nicht im Repo.
+// Abspielen: Ticker mit 8 kHz setzt das Tastverhaeltnis einer 31-kHz-PWM auf D13.
+extern bool otaBereit;        // Flash-Speicher eingebunden (Web.ino)
+const char* LIED_DATEI = "/fs/lied.raw";
+const int AUDIO_RATE = 8000;
+int LAUTSTAERKE = 40;           // 0..100 %
+bool weihnacht = false;
+uint32_t liedBytes = 0;
+mbed::PwmOut* audioPwm = nullptr;
+mbed::Ticker audioTick;
+FILE* liedDatei = nullptr;
+const uint32_t ABUF = 8192;     // ca. 1 s Puffer
+volatile uint8_t abuf[ABUF];
+volatile uint32_t aLesen = 0, aSchreiben = 0;
+volatile float aLaut = 0;
+
+void audioIsr() {
+  if (aLesen != aSchreiben) { audioPwm->write(abuf[aLesen % ABUF] / 255.0f * aLaut); aLesen++; }
+  else audioPwm->write(0);
+}
+
+void lautsprecherStill() {
+  audioTick.detach();
+  if (audioPwm) audioPwm->write(0);
+  else { pinMode(LAUTSPR_A, OUTPUT); digitalWrite(LAUTSPR_A, LOW); }
+  digitalWrite(LAUTSPR_B, LOW);
+}
+
+void musikAus() {
+  if (weihnacht) Serial.println("Weihnachtsmodus AUS");
+  weihnacht = false;
+  lautsprecherStill();
+  if (liedDatei) { fclose(liedDatei); liedDatei = nullptr; }
+}
+bool musikLaeuft() { return weihnacht; }
+
+void liedPruefen() {
+  FILE* f = fopen(LIED_DATEI, "rb");
+  liedBytes = 0;
+  if (f) { fseek(f, 0, SEEK_END); liedBytes = ftell(f); fclose(f); }
+}
+
+bool setWeihnacht(bool an) {
+  if (!an) { musikAus(); return true; }
+  if (!otaBereit || liedBytes == 0) { Serial.println("Weihnachtsmodus: erst ein Lied im Dashboard hochladen"); return false; }
+  liedDatei = fopen(LIED_DATEI, "rb");
+  if (!liedDatei) return false;
+  if (!audioPwm) { audioPwm = new mbed::PwmOut(digitalPinToPinName(LAUTSPR_A)); audioPwm->period_us(32); }
+  audioPwm->write(0);
+  aLesen = aSchreiben = 0;
+  weihnacht = true;
+  musikUpdate();                                   // Puffer vorfuellen
+  audioTick.attach(&audioIsr, std::chrono::microseconds(1000000 / AUDIO_RATE));
+  Serial.println("Weihnachtsmodus AN");
+  return true;
+}
+
+// im loop: Puffer aus der Datei nachfuellen, am Ende von vorn
+void musikUpdate() {
+  if (!weihnacht || !liedDatei) return;
+  aLaut = LAUTSTAERKE / 100.0f;
+  uint8_t tmp[512];
+  while (ABUF - (aSchreiben - aLesen) > sizeof(tmp)) {
+    size_t n = fread(tmp, 1, sizeof(tmp), liedDatei);
+    if (n == 0) { fseek(liedDatei, 0, SEEK_SET); n = fread(tmp, 1, sizeof(tmp), liedDatei); if (n == 0) return; }
+    for (size_t i = 0; i < n; i++) abuf[(aSchreiben + i) % ABUF] = tmp[i];
+    aSchreiben += n;
+  }
 }
 
 // ein Befehl - gemeinsam fuer seriellen Monitor und Weboberflaeche
@@ -245,6 +360,7 @@ bool befehl(char c) {
     case 'p': scanAnalog();         return true;
     case 'm': live = !live;         return true;
     case 'v': servoTest();          return true;
+    case 'j': return setWeihnacht(!weihnacht);
   }
   return false;
 }
@@ -265,12 +381,15 @@ void setup() {
   tasterInit(tL);
   tasterInit(tM);
   tasterInit(tR);
+  pinMode(SENSOR_KUGEL, INPUT_PULLUP);
+  pinMode(LAUTSPR_A, OUTPUT); pinMode(LAUTSPR_B, OUTPUT); lautsprecherStill();
 
   Serial.println("Parcours 1 bereit.");
   Serial.println("a=Aufzug w=Stellweiche h=Weichenhebel s=Stoppstelle l=LEDs");
   Serial.println("x=alles stoppen t=Taster m=Taster live p=alle Analogpins ?=Status");
 
   webSetup();
+  liedPruefen();
   einstLaden();   // gespeicherte Einstellungen aus dem Flash (braucht den in webSetup eingebundenen Speicher)
 }
 
@@ -283,6 +402,8 @@ void loop() {
 
   stellUpdate(weiche);
   stellUpdate(hebel);
+  sensorUpdate();
+  musikUpdate();
   stoppUpdate();
   servoUpdate();
   ledUpdate();

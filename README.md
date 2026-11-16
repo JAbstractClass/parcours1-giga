@@ -20,6 +20,11 @@ Ob der Build durchging: Tab **Actions** im Repo. Ist er rot, bleibt der Giga auf
 
 Im Dashboard oben rechts **Einstellen**: Geschwindigkeit des Aufzugs, Kraft und Stellweg beider Weichen, Winkel, Offen-Zeit, Tempo und Takt der Stoppstelle, Richtung umkehren, Blinkcode. Jeder Aktor hat einen Test-Knopf. Werte gelten sofort und werden auf dem Giga in `/fs/einst.txt` gespeichert (bleiben auch nach Neustart und Update). „Alles auf Startwerte zurücksetzen“ nimmt wieder die Werte aus dem Block *Kalibrierung* in `Parcours1.ino`.
 
+## Kugelsensor und Weihnachtsmodus
+
+- Der Sensor schaut auf die Kugel, die vor der geschlossenen Stoppstelle wartet. Die Stoppstelle öffnet nur, wenn er eine Kugel sieht, und schließt, sobald sie durchgerollt ist. Jede durchgerollte Kugel erhöht den Zähler („Kugeln durch“). Empfindlichkeit am Poti des Moduls einstellen. Ohne Sensor: unter Einstellen → Stoppstelle „Nur freigeben, wenn der Sensor eine Kugel sieht“ ausschalten.
+- Weihnachtsmodus: Im Dashboard ein Lied (MP3) hochladen. Der Browser wandelt es in 8 kHz/8 Bit um und schickt es in den Flash des Giga (`/fs/lied.raw`). Das Lied liegt **nicht** im Repo. Lautstärke unter Einstellen → Lautsprecher.
+
 ## Dashboard bearbeiten
 
 Quelle ist `Parcours1/dashboard.html`. Vorschau ohne Giga (simuliert alle Funktionen):
@@ -40,6 +45,9 @@ Beim Bauen wird daraus automatisch `Parcours1/Dashboard.h` erzeugt (`tools/html2
 | Stoppstelle (Servo) | SERVO 1 | D2 |
 | Rainbow-LED 1 / 2 | M1 Klemme 16 / 17 → GND | D16 / D17 |
 | Taster links / Mitte / rechts | A5 / A4 / A3 → GND | |
+| Kugelsensor (IR-Reflex, Sensorkit B04) | VCC → **3,3 V** (nie 5 V), GND → GND, DOUT → IN A6 | A6 |
+| Lautsprecher (2 Pins) | M6, mit ca. 100 Ω Vorwiderstand in Reihe | D12/D13 |
+| Statuslampe RGB-Modul (B09, optional) | R → A0/D18, G → A1/D19, B → A2, „–“ → GND | |
 
 Die Stoppstelle ist kein Motor an einem M-Ausgang, sondern ein Servo am 3-poligen Pfostenstecker SERVO 1 (Signal an ~2, VCC, GND) und wird über die Servo-Bibliothek mit Winkeln gestellt (`STOPP_ZU` / `STOPP_AUF`).
 

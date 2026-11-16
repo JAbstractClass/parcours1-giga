@@ -234,6 +234,11 @@ String statusJson() {
   s += ",\"ampel\":\"";   s += ampel();
   s += "\",\"lampe\":\"";   s += lampeModus;
   s += "\",\"notaus\":";  s += notAus ? "true" : "false";
+  s += ",\"kugel\":";     s += kugelDa ? "true" : "false";
+  s += ",\"kugeln\":";    s += String(kugelZaehler);
+  s += ",\"sensor\":";    s += SENSOR_AN ? "true" : "false";
+  s += ",\"weihnacht\":"; s += weihnacht ? "true" : "false";
+  s += ",\"lied\":";      s += String(liedBytes / AUDIO_RATE);
   s += ",\"grund\":\"";   s += ampelGrund();
   s += "\",\"ota\":\"";     s += otaMeldung;
   s += "\"}";
@@ -299,7 +304,13 @@ void webLoop() {
   if (!c) return;
 
   String req = zeile(c, 500);                 // z. B. "GET /cmd?c=a HTTP/1.1"
-  while (c.connected() && zeile(c, 200).length() > 0) {}   // Header ueberspringen
+  long bodyLen = 0;
+  while (c.connected()) {                      // Header lesen, nur Content-Length merken
+    String h = zeile(c, 200);
+    if (h.length() == 0) break;
+    h.toLowerCase();
+    if (h.startsWith("content-length:")) bodyLen = h.substring(15).toInt();
+  }
 
   int a = req.indexOf(' '), b = req.indexOf(' ', a + 1);
   String pfad = (a > 0 && b > a) ? req.substring(a + 1, b) : "/";
@@ -313,7 +324,7 @@ void webLoop() {
     antwort(c, "application/json", statusJson());
   } else if (pfad.startsWith("/cmd")) {
     String cm = param(pfad, "c");
-    if (cm.length() == 1 && strchr("awhslxv", cm[0])) befehl(cm[0]);
+    if (cm.length() == 1 && strchr("awhslxvj", cm[0])) befehl(cm[0]);
     antwort(c, "application/json", statusJson());
   } else if (pfad.startsWith("/einst")) {
     // /einst -> alle Werte, /einst?k=weiche_ms&v=800 -> setzen, /einst?reset=1 -> Startwerte
@@ -321,6 +332,25 @@ void webLoop() {
     String k = param(pfad, "k");
     if (k.length() && einstSetzen(k, param(pfad, "v").toInt())) { einstAnwenden(); einstSpeichern(); }
     antwort(c, "application/json", einstJson());
+  } else if (pfad.startsWith("/lied")) {
+    // Hochladen in Stuecken: POST /lied?off=0 (neu), dann ?off=<bisher> ; GET /lied?loeschen=1
+    bool ok = otaBereit;
+    if (ok && param(pfad, "loeschen") == "1") { musikAus(); remove(LIED_DATEI); }
+    else if (ok && bodyLen > 0) {
+      long off = param(pfad, "off").toInt();
+      if (off == 0) musikAus();
+      FILE* f = fopen(LIED_DATEI, off == 0 ? "wb" : "ab");
+      ok = f != nullptr;
+      uint8_t buf[1024]; long rest = bodyLen; unsigned long t0 = millis();
+      while (ok && rest > 0 && c.connected() && millis() - t0 < 10000) {
+        int n = c.read(buf, min((long)sizeof(buf), rest));
+        if (n > 0) { fwrite(buf, 1, n, f); rest -= n; t0 = millis(); }
+      }
+      if (f) fclose(f);
+      ok = ok && rest == 0;
+    }
+    liedPruefen();
+    antwort(c, "application/json", String("{\"ok\":") + (ok ? "true" : "false") + ",\"bytes\":" + liedBytes + "}", ok ? 200 : 500);
   } else if (pfad.startsWith("/lampe")) {
     String f = param(pfad, "f");
     if (f.length() == 1 && strchr("agorbw0", f[0])) { lampeModus = f[0]; ledUpdate(); }
@@ -424,6 +454,7 @@ void githubUpdateAnfordern() { otaUrl = String(OTA_BASIS) + "/Parcours1.ota"; }
 void githubPruefen() {
   // nicht pruefen, waehrend eine Weiche faehrt (die Abfrage blockiert ~1-2 s)
   if (weiche.aktiv || hebel.aktiv) return;
+  if (musikLaeuft()) return;   // Abfrage blockiert kurz und wuerde das Lied stocken lassen
   if (!erstePruefung && millis() - letztePruefung < UPDATE_PRUEF_MS) return;
   if (erstePruefung && millis() < 5000) return;   // nach dem Start kurz warten
   erstePruefung = false;
