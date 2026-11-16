@@ -45,6 +45,7 @@ mbed::Callback<void(const char*, uint32_t)> abrufZiel;
 String neuesteVersion = "";   // zuletzt auf GitHub gesehener Commit
 unsigned long letztePruefung = 0;
 bool erstePruefung = true;
+bool internetOk = false;      // letzter Abruf von GitHub hat geklappt
 String fehlVersion = "";      // Auto-Update dieser Version ist fehlgeschlagen -> nicht endlos wiederholen
 
 // Weboberflaeche: Quelle ist dashboard.html, Dashboard.h wird daraus erzeugt (tools/html2h.py)
@@ -165,6 +166,41 @@ void webStatusSeriell() {
   Serial.println();
 }
 
+// ---------- Ampel: Zustand der Anlage ----------
+// 'r' = Fehler oder Not-Aus, 'o' = kein Internet, 'g' = alles ok
+bool otaFehler() { return otaMeldung.length() > 0 && !otaMeldung.startsWith("Update laeuft"); }
+
+char ampel() {
+  if (notAus || otaFehler()) return 'r';
+  if (!wlanOk || WiFi.status() != WL_CONNECTED || !internetOk) return 'o';
+  return 'g';
+}
+
+String ampelGrund() {
+  if (notAus) return "Not-Aus";
+  if (otaFehler()) return otaMeldung;
+  if (!wlanOk || WiFi.status() != WL_CONNECTED) return "Kein WLAN";
+  if (!internetOk) return "Kein Internet";
+  return "";
+}
+
+// Farbe auf der RGB-LED des Giga (leuchtet bei LOW), Blinkcode auf den Rainbow-LEDs
+void ledUpdate() {
+  static bool init = false;
+  if (!init) { pinMode(LEDR, OUTPUT); pinMode(LEDG, OUTPUT); pinMode(LEDB, OUTPUT); init = true; }
+  char a = ampel();
+  digitalWrite(LEDR, (a == 'r' || a == 'o') ? LOW : HIGH);
+  digitalWrite(LEDG, (a == 'g' || a == 'o') ? LOW : HIGH);   // Rot + Gruen = Orange/Gelb
+  digitalWrite(LEDB, HIGH);
+  bool an = ledsAn;
+  if (an && LED_BLINKCODE) {
+    if (a == 'r') an = (millis() / 150) % 2 == 0;
+    else if (a == 'o') an = (millis() / 1000) % 2 == 0;
+  }
+  digitalWrite(LED_1, an ? HIGH : LOW);
+  digitalWrite(LED_2, an ? HIGH : LOW);
+}
+
 // ---------- HTTP ----------
 String statusJson() {
   String s = "{\"aufzug\":";
@@ -182,7 +218,10 @@ String statusJson() {
   s += "\",\"auto\":";     s += autoUpdate() ? "true" : "false";
   s += ",\"daten\":";     s += String(datenBytes);
   s += ",\"abrufe\":";    s += String(datenAbrufe);
-  s += ",\"ota\":\"";     s += otaMeldung;
+  s += ",\"ampel\":\"";   s += ampel();
+  s += "\",\"notaus\":";  s += notAus ? "true" : "false";
+  s += ",\"grund\":\"";   s += ampelGrund();
+  s += "\",\"ota\":\"";     s += otaMeldung;
   s += "\"}";
   return s;
 }
@@ -348,6 +387,7 @@ String githubVersion() {
     for (uint32_t i = 0; i < len && text.length() < 64; i++) text += b[i];
   });
   letzterDownloadCode = code;
+  internetOk = (code == 200);
   text.trim();
   if (code != 200 || text.length() < 7 || text.length() > 40) return "";
   for (unsigned i = 0; i < text.length(); i++) if (!isHexadecimalDigit(text[i])) return "";

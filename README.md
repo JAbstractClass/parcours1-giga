@@ -37,6 +37,18 @@ Beim Bauen wird daraus automatisch `Parcours1/Dashboard.h` erzeugt (`tools/html2
 | Rainbow-LED 1 / 2 | M1 Klemme 16 / 17 → GND | D16 / D17 |
 | Taster links / Mitte / rechts | A5 / A4 / A3 → GND | |
 
+Die Stoppstelle ist kein Motor an einem M-Ausgang, sondern ein Servo am 3-poligen Pfostenstecker SERVO 1 (Signal an ~2, VCC, GND) und wird über die Servo-Bibliothek mit Winkeln gestellt (`STOPP_ZU` / `STOPP_AUF`).
+
+## Statusanzeige
+
+| Zustand | RGB-LED auf dem Giga | Rainbow-LEDs | Dashboard |
+|---|---|---|---|
+| Alles ok, Internet da | grün | Dauerlicht | grün |
+| Kein Internet / kein WLAN | orange | blinken langsam (1 s) | orange |
+| Not-Aus oder Fehler (z. B. Update fehlgeschlagen) | rot | blinken schnell | rot |
+
+Die Rainbow-LEDs wechseln ihre Farbe selbst und hängen nur an/aus am Shield, deshalb zeigen sie den Zustand als Blinkcode. Not-Aus bleibt aktiv, bis der Aufzug wieder gestartet wird. Weichenkraft und Stellweg je Weiche: `WEICHE_PWM`/`WEICHE_PULS_MS` und `HEBEL_PWM`/`HEBEL_PULS_MS` in `Parcours1.ino`.
+
 Taster werden digital mit internem Pull-up gelesen: Die Analogwerte zeigen mit dem Shield an allen Pins dauerhaft 1023.
 
 ## Wichtig

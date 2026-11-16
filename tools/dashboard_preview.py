@@ -12,7 +12,7 @@ GIGA = sys.argv[1] if len(sys.argv) > 1 else ""
 START = time.time()
 S = {"aufzug": False, "leds": True, "stopp": False, "weiche": 1, "hebel": 1,
      "version": "abc1234", "ip": "127.0.0.1", "datum": "Vorschau", "rssi": -58,
-     "github": "abc1234", "auto": True, "ota": ""}
+     "github": "abc1234", "auto": True, "ota": "", "ampel": "g", "notaus": False, "grund": ""}
 
 def status():
     s = dict(S); s["uptime"] = int(time.time() - START)
@@ -41,12 +41,12 @@ class H(BaseHTTPRequestHandler):
         if u.path == "/status": return self.send(json.dumps(status()))
         if u.path == "/cmd":
             c = parse_qs(u.query).get("c", [""])[0]
-            if c == "a": S["aufzug"] = not S["aufzug"]
+            if c == "a": S["aufzug"] = not S["aufzug"]; S.update(notaus=False, ampel="g", grund="")
             elif c == "w": S["weiche"] = 3 - S["weiche"]
             elif c == "h": S["hebel"] = 3 - S["hebel"]
             elif c == "s": S["stopp"] = not S["stopp"]
             elif c == "l": S["leds"] = not S["leds"]
-            elif c == "x": S.update(aufzug=False, stopp=False)
+            elif c == "x": S.update(aufzug=False, stopp=False, notaus=True, ampel="r", grund="Not-Aus")
             return self.send(json.dumps(status()))
         if u.path in ("/github", "/update"):
             S["ota"] = "Update laeuft ... (Vorschau)"; return self.send("ok", "text/plain")

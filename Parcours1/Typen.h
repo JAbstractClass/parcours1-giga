@@ -7,6 +7,8 @@ struct Stellmotor {
   bool stellung1;
   unsigned long start;
   bool aktiv;
+  int pwm;                 // Kraft 0..255
+  unsigned long pulsMs;    // Fahrzeit bis Anschlag
 };
 
 // Taster: Ruhezustand wird beim Start gemessen, gedrueckt = Abweichung davon

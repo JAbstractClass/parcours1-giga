@@ -40,8 +40,15 @@ const int TASTER_R = A3;     // T_R
 // ---------- Kalibrierung ----------
 const int  AUFZUG_PWM         = 200;   // 0..255, Geschwindigkeit Kettenaufzug
 const bool AUFZUG_UMKEHREN    = false; // true, falls Aufzug falsch herum laeuft
-const int  STELL_PWM          = 180;   // Kraft der Weichenmotoren
-const unsigned long STELL_PULS_MS = 350; // Fahrzeit bis Anschlag
+// Weichenmotoren: Kraft (0..255) und Fahrzeit bis Anschlag, je Weiche einzeln.
+// Kommt eine Weiche nicht bis zum Anschlag: Fahrzeit erhoehen. Brummt sie am Anschlag: verringern.
+const int  WEICHE_PWM         = 255;   // Weiche 1 (Flexschiene, M3): volle Kraft
+const unsigned long WEICHE_PULS_MS = 650; // Weiche 1: laengerer Stellweg
+const int  HEBEL_PWM          = 180;   // Weiche 2 (Weichenhebel, M4)
+const unsigned long HEBEL_PULS_MS  = 350;
+// Rainbow-LEDs koennen ihre Farbe nicht waehlen -> Zustand als Blinkcode:
+// Dauerlicht = alles ok, langsam blinken = kein Internet, schnell blinken = Fehler / Not-Aus
+const bool LED_BLINKCODE      = true;
 const int  STOPP_ZU           = 60;    // Servo-Winkel: Kugel gestoppt
 const int  STOPP_AUF          = 120;   // Servo-Winkel: Kugel frei
 const bool STOPP_AUTOMATIK    = true;  // Stoppstelle automatisch takten
@@ -52,6 +59,7 @@ const unsigned long ENTPRELL_MS = 40;
 // ---------- Zustand ----------
 Servo stopp;
 bool aufzugAn = false, ledsAn = true, stoppOffen = false;
+bool notAus = false;            // 'x' gedrueckt: bleibt rot, bis der Aufzug wieder gestartet wird
 bool weicheLinks = true, hebelLinks = true;
 unsigned long stoppZeit = 0;
 bool live = false;              // 'm': Tasterwerte laufend ausgeben
@@ -64,13 +72,13 @@ void motor(int pinA, int pinB, int speed) {
 }
 
 // ---------- Weichen: nicht-blockierender Stellpuls ----------
-Stellmotor weiche = {WEICHE_A, WEICHE_B, "Weiche", true, 0, false};
-Stellmotor hebel  = {HEBEL_A,  HEBEL_B,  "Hebel",  true, 0, false};
+Stellmotor weiche = {WEICHE_A, WEICHE_B, "Weiche", true, 0, false, WEICHE_PWM, WEICHE_PULS_MS};
+Stellmotor hebel  = {HEBEL_A,  HEBEL_B,  "Hebel",  true, 0, false, HEBEL_PWM,  HEBEL_PULS_MS};
 
 void umschalten(Stellmotor& m) {
   if (m.aktiv) return;                 // laeuft noch
   m.stellung1 = !m.stellung1;
-  motor(m.pinA, m.pinB, m.stellung1 ? STELL_PWM : -STELL_PWM);
+  motor(m.pinA, m.pinB, m.stellung1 ? m.pwm : -m.pwm);
   m.start = millis();
   m.aktiv = true;
   Serial.print(m.name);
@@ -78,7 +86,7 @@ void umschalten(Stellmotor& m) {
 }
 
 void stellUpdate(Stellmotor& m) {
-  if (m.aktiv && millis() - m.start >= STELL_PULS_MS) {
+  if (m.aktiv && millis() - m.start >= m.pulsMs) {
     motor(m.pinA, m.pinB, 0);
     m.aktiv = false;
   }
@@ -114,6 +122,7 @@ bool gedrueckt(Taster& t) {
 // ---------- Funktionen ----------
 void setAufzug(bool an) {
   aufzugAn = an;
+  if (an) notAus = false;         // Starten gibt die Anlage nach Not-Aus wieder frei
   int v = an ? AUFZUG_PWM : 0;
   motor(AUFZUG_A, AUFZUG_B, AUFZUG_UMKEHREN ? -v : v);
   stoppZeit = millis();
@@ -122,8 +131,7 @@ void setAufzug(bool an) {
 
 void setLeds(bool an) {
   ledsAn = an;
-  digitalWrite(LED_1, an ? HIGH : LOW);
-  digitalWrite(LED_2, an ? HIGH : LOW);
+  ledUpdate();
   Serial.println(an ? "LEDs AN" : "LEDs AUS");
 }
 
@@ -186,7 +194,7 @@ bool befehl(char c) {
     case 'h': umschalten(hebel);    return true;
     case 's': setStopp(!stoppOffen); return true;
     case 'l': setLeds(!ledsAn);     return true;
-    case 'x': allesStopp();         return true;
+    case 'x': allesStopp(); notAus = true; Serial.println("NOT-AUS"); return true;
     case 't': tasterRoh();          return true;
     case '?': status(); webStatusSeriell(); return true;
     case 'n': wlanScan();           return true;
@@ -231,6 +239,7 @@ void loop() {
   stellUpdate(weiche);
   stellUpdate(hebel);
   stoppUpdate();
+  ledUpdate();
 
   if (live && millis() - liveZeit >= 300) { liveZeit = millis(); tasterRoh(); }
 
