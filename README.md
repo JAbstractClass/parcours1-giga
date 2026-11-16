@@ -14,7 +14,7 @@ Ob der Build durchging: Tab **Actions** im Repo. Ist er rot, bleibt der Giga auf
 
 - **Weboberfläche:** Laptop/Handy in den Hotspot „iPhone von mir“, dann die IP aus dem seriellen Monitor im Browser öffnen (bisher `http://172.20.10.2`). Mehrere Geräte gleichzeitig gehen.
 - **Taster:** Mitte (A4) = Aufzug an/aus, links (A5) = Stellweiche, rechts (A3) = Weichenhebel. Beim Einschalten nicht drücken.
-- **Serieller Monitor** (115200 Baud, `./monitor.command`): `a` Aufzug, `w` Weiche, `h` Hebel, `s` Stoppstelle, `l` LEDs, `x` alles stoppen, `v` Servo-Test, `?` Status, `t`/`m` Taster, `n` WLANs anzeigen, `g` GitHub-Verbindung testen, `u` Update von GitHub sofort laden.
+- **Serieller Monitor** (115200 Baud, `./monitor.command`): `a` Aufzug, `w` Weiche, `h` Hebel, `s` Stoppstelle, `l` LEDs, `x` alles stoppen, `v` Servo-Test, `s` gibt eine Kugel frei (Stoppstelle 300 ms auf, dann zu), `?` Status, `t`/`m` Taster, `n` WLANs anzeigen, `g` GitHub-Verbindung testen, `u` Update von GitHub sofort laden.
 
 ## Dashboard bearbeiten
 
@@ -47,7 +47,7 @@ Die Stoppstelle ist kein Motor an einem M-Ausgang, sondern ein Servo am 3-polige
 | Kein Internet / kein WLAN | orange | blinken langsam (1 s) | orange |
 | Not-Aus oder Fehler (z. B. Update fehlgeschlagen) | rot | blinken schnell | rot |
 
-Echte Farben oben am Turm: RGB-LED-Modul aus dem Sensorkit (B09) anschließen, R → D18, G → D19, „-“ → GND. Orange ist dort Rot + Grün und wirkt eher gelb. Die Rainbow-LEDs wechseln ihre Farbe selbst und hängen nur an/aus am Shield, deshalb zeigen sie den Zustand als Blinkcode. Not-Aus bleibt aktiv, bis der Aufzug wieder gestartet wird. Weichenkraft und Stellweg je Weiche: `WEICHE_PWM`/`WEICHE_PULS_MS` und `HEBEL_PWM`/`HEBEL_PULS_MS` in `Parcours1.ino`.
+Echte Farben oben am Turm: RGB-LED-Modul aus dem Sensorkit (B09) anschließen, R → IN A0 oder D18, G → IN A1 oder D19, B → IN A2, „-“ → GND (beide Varianten werden gleichzeitig angesteuert; im Dashboard unter System → Statuslampe testbar). Orange ist dort Rot + Grün und wirkt eher gelb. Die Rainbow-LEDs wechseln ihre Farbe selbst und hängen nur an/aus am Shield, deshalb zeigen sie den Zustand als Blinkcode. Not-Aus bleibt aktiv, bis der Aufzug wieder gestartet wird. Weichenkraft und Stellweg je Weiche: `WEICHE_PWM`/`WEICHE_PULS_MS` und `HEBEL_PWM`/`HEBEL_PULS_MS` in `Parcours1.ino`.
 
 Taster werden digital mit internem Pull-up gelesen: Die Analogwerte zeigen mit dem Shield an allen Pins dauerhaft 1023.
 

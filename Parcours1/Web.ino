@@ -46,6 +46,7 @@ String neuesteVersion = "";   // zuletzt auf GitHub gesehener Commit
 unsigned long letztePruefung = 0;
 bool erstePruefung = true;
 bool internetOk = false;      // letzter Abruf von GitHub hat geklappt
+char lampeModus = 'a';        // Statuslampe: 'a' = automatisch, sonst feste Farbe zum Testen (g o r b w 0)
 String fehlVersion = "";      // Auto-Update dieser Version ist fehlgeschlagen -> nicht endlos wiederholen
 
 // Weboberflaeche: Quelle ist dashboard.html, Dashboard.h wird daraus erzeugt (tools/html2h.py)
@@ -187,14 +188,23 @@ String ampelGrund() {
 // Farbe auf der RGB-LED des Giga (leuchtet bei LOW), Blinkcode auf den Rainbow-LEDs
 void ledUpdate() {
   static bool init = false;
-  if (!init) { pinMode(LEDR, OUTPUT); pinMode(LEDG, OUTPUT); pinMode(LEDB, OUTPUT); pinMode(RGB_R, OUTPUT); pinMode(RGB_G, OUTPUT); init = true; }
+  if (!init) {
+    pinMode(LEDR, OUTPUT); pinMode(LEDG, OUTPUT); pinMode(LEDB, OUTPUT);
+    for (int p : RGB_R) pinMode(p, OUTPUT);
+    for (int p : RGB_G) pinMode(p, OUTPUT);
+    for (int p : RGB_B) pinMode(p, OUTPUT);
+    init = true;
+  }
   char a = ampel();
   digitalWrite(LEDR, (a == 'r' || a == 'o') ? LOW : HIGH);
   digitalWrite(LEDG, (a == 'g' || a == 'o') ? LOW : HIGH);   // Rot + Gruen = Orange/Gelb
   digitalWrite(LEDB, HIGH);
-  // RGB-Modul oben am Turm (leuchtet bei HIGH)
-  digitalWrite(RGB_R, (a == 'r' || a == 'o') ? HIGH : LOW);
-  digitalWrite(RGB_G, (a == 'g' || a == 'o') ? HIGH : LOW);
+  // RGB-Modul oben am Turm (leuchtet bei HIGH); im Testmodus feste Farbe
+  char f = lampeModus == 'a' ? a : lampeModus;
+  bool r = f == 'r' || f == 'o' || f == 'w', g = f == 'g' || f == 'o' || f == 'w', b = f == 'b' || f == 'w';
+  for (int p : RGB_R) digitalWrite(p, r ? HIGH : LOW);
+  for (int p : RGB_G) digitalWrite(p, g ? HIGH : LOW);
+  for (int p : RGB_B) digitalWrite(p, b ? HIGH : LOW);
   bool an = ledsAn;
   if (an && LED_BLINKCODE) {
     if (a == 'r') an = (millis() / 150) % 2 == 0;
@@ -222,6 +232,7 @@ String statusJson() {
   s += ",\"daten\":";     s += String(datenBytes);
   s += ",\"abrufe\":";    s += String(datenAbrufe);
   s += ",\"ampel\":\"";   s += ampel();
+  s += "\",\"lampe\":\"";   s += lampeModus;
   s += "\",\"notaus\":";  s += notAus ? "true" : "false";
   s += ",\"grund\":\"";   s += ampelGrund();
   s += "\",\"ota\":\"";     s += otaMeldung;
@@ -303,6 +314,10 @@ void webLoop() {
   } else if (pfad.startsWith("/cmd")) {
     String cm = param(pfad, "c");
     if (cm.length() == 1 && strchr("awhslxv", cm[0])) befehl(cm[0]);
+    antwort(c, "application/json", statusJson());
+  } else if (pfad.startsWith("/lampe")) {
+    String f = param(pfad, "f");
+    if (f.length() == 1 && strchr("agorbw0", f[0])) { lampeModus = f[0]; ledUpdate(); }
     antwort(c, "application/json", statusJson());
   } else if (pfad.startsWith("/github")) {
     githubUpdateAnfordern();

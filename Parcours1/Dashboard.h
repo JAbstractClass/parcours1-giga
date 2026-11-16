@@ -135,6 +135,13 @@ body.sys #shade{opacity:1;visibility:visible}
 .kv div{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px solid var(--line);font:13px var(--mono)}
 .kv span:first-child{color:var(--muted)}
 .kv span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lamp{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:12px}
+.lamp button{height:54px;border-radius:12px;background:var(--tile2);font:600 12px var(--sans);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;border:1px solid transparent;transition:background .2s,border-color .2s}
+.lamp button:hover{background:#323237}
+.lamp button.on{border-color:var(--ink);background:#2c2c31}
+.lamp i{width:14px;height:14px;border-radius:50%;background:var(--c);box-shadow:0 0 12px var(--c)}
+.lamp button[data-f="a"] i{background:conic-gradient(#3ddc84,#ff9f0a,#ff3b30,#3ddc84);box-shadow:none}
+.lamp button[data-f="0"] i{background:none;border:2px solid var(--faint);box-shadow:none}
 #otamsg{font:13px var(--sans);color:#ffb400;margin-top:10px}
 #otamsg:empty{display:none}
 .wide{width:100%;margin-top:12px}
@@ -226,6 +233,19 @@ kbd{font:600 11px var(--mono);background:var(--tile);border:1px solid var(--line
   <details><summary>Von eigener Adresse laden</summary><input id="url" spellcheck="false" autocomplete="off"><button class="btn wide" id="urlbtn"><span>Update starten</span></button></details>
  </div>
 
+ <h3 class="lbl">Statuslampe oben · Test</h3>
+ <div class="card"><p class="keys" style="line-height:1.5">RGB-Modul: R an A0 oder D18, G an A1 oder D19, B an A2, „–“ an GND. „Auto“ zeigt den Zustand der Anlage.</p>
+  <div class="lamp" id="lamp">
+   <button data-f="a"><i></i>Auto</button>
+   <button data-f="g" style="--c:#3ddc84"><i></i>Grün</button>
+   <button data-f="o" style="--c:#ff9f0a"><i></i>Orange</button>
+   <button data-f="r" style="--c:#ff3b30"><i></i>Rot</button>
+   <button data-f="b" style="--c:#3a8bff"><i></i>Blau</button>
+   <button data-f="w" style="--c:#fff"><i></i>Weiß</button>
+   <button data-f="0"><i></i>Aus</button>
+  </div>
+ </div>
+
  <h3 class="lbl">Stoppstelle</h3>
  <div class="card"><p class="keys" style="line-height:1.5">Fährt den Servo einmal ganz auf und zu (an SERVO 1 und SERVO 2). Bewegt sich nichts: Stecker drehen, Signal muss an ~2.</p><button class="btn wide" data-c="v"><span>Servo testen</span></button></div>
 
@@ -293,7 +313,7 @@ function render(s){
   $('go_i').setAttribute('d',s.aufzug?'M6 6h12v12H6z':'M7 4l14 8-14 8z');
   document.querySelectorAll('.seg').forEach(g=>[...g.children].forEach(b=>b.classList.toggle('on',+b.dataset.v===s[g.dataset.f])));
   $('l_b').classList.toggle('on',s.leds);$('l_v').textContent=!s.leds?'aus':amp==='g'?'an · ok':amp==='o'?'blinkt · offline':'blinkt · Fehler';
-  $('s_b').classList.toggle('on',s.stopp);$('s_t').textContent=s.stopp?'Offen':'Kugel freigeben';
+  $('s_b').classList.toggle('on',s.stopp);$('s_t').textContent=s.stopp?'Kugel rollt …':'Kugel freigeben';
   hsSet('a',s.aufzug,s.aufzug?'läuft':'aus');hsSet('s',s.stopp,s.stopp?'offen':'zu');
   hsSet('w',false,s.weiche===2?'Vorbei':'Looping');hsSet('h',false,s.hebel===2?'S-Kurve':'Spirale');hsSet('l',s.leds,s.leds?({g:'ok',o:'offline',r:'Fehler'})[amp]:'aus');
   if(s.aufzug&&!runSince)runSince=Date.now();if(!s.aufzug&&runSince){runMs+=Date.now()-runSince;runSince=null;}
@@ -306,6 +326,7 @@ function render(s){
   const pend=s.auto&&s.github&&s.github!==s.version;
   $('f_auto').textContent=!s.auto?'Lokale Version · kein Auto-Update':pend?'Update gefunden · lädt gleich':'Aktuell · Auto-Update an';
   $('f_st').classList.toggle('warn',!s.auto||pend);
+  [...$('lamp').children].forEach(b=>b.classList.toggle('on',b.dataset.f===(s.lampe||'a')));
   ota=s.ota||'';$('otamsg').textContent=ota;$('sysbtn').classList.toggle('alert',!!(pend||ota));
   if(p){
     const ev=k=>P1.events.push(k);
@@ -363,6 +384,7 @@ addEventListener('keydown',e=>{
   else if(k==='f')view(P1.view==='f'?'o':'f');
   else if(k.length===1&&'awhslx'.includes(k))cmd(k);
 });
+$('lamp').onclick=async e=>{const b=e.target.closest('button');if(!b)return;try{render(await get('/lampe?f='+b.dataset.f));}catch(x){toast('Giga nicht erreichbar');}};
 $('ghbtn').onclick=async()=>{toast('Update von GitHub gestartet');log('Update von GitHub angefordert');try{await fetch('/github',{cache:'no-store'});}catch(e){}};
 $('urlbtn').onclick=async()=>{const u=$('url').value.trim();if(!u)return;toast('Update gestartet');log('Update von '+u);try{await fetch('/update?url='+encodeURIComponent(u));}catch(e){}};
 $('url').value='%OTA_URL%';

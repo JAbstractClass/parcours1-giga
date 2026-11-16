@@ -12,10 +12,11 @@ GIGA = sys.argv[1] if len(sys.argv) > 1 else ""
 START = time.time()
 S = {"aufzug": False, "leds": True, "stopp": False, "weiche": 1, "hebel": 1,
      "version": "abc1234", "ip": "127.0.0.1", "datum": "Vorschau", "rssi": -58,
-     "github": "abc1234", "auto": True, "ota": "", "ampel": "g", "notaus": False, "grund": ""}
+     "github": "abc1234", "auto": True, "ota": "", "ampel": "g", "notaus": False, "grund": "", "lampe": "a"}
 
 def status():
-    s = dict(S); s["uptime"] = int(time.time() - START)
+    if S.get("_zu") and time.time() > S["_zu"]: S["stopp"] = False; S.pop("_zu")
+    s = {k: v for k, v in S.items() if k[0] != "_"}; s["uptime"] = int(time.time() - START)
     s["abrufe"] = s["uptime"] // 60 + 1; s["daten"] = s["abrufe"] * 8
     if S["aufzug"]:  # Stoppstelle taktet wie auf dem Giga
         s["stopp"] = int(time.time()) % 9 == 0
@@ -44,11 +45,13 @@ class H(BaseHTTPRequestHandler):
             if c == "a": S["aufzug"] = not S["aufzug"]; S.update(notaus=False, ampel="g", grund="")
             elif c == "w": S["weiche"] = 3 - S["weiche"]
             elif c == "h": S["hebel"] = 3 - S["hebel"]
-            elif c == "s": S["stopp"] = not S["stopp"]
+            elif c == "s": S["stopp"] = True; S["_zu"] = time.time() + .3
             elif c == "l": S["leds"] = not S["leds"]
             elif c == "v": pass
             elif c == "x": S.update(aufzug=False, stopp=False, notaus=True, ampel="r", grund="Not-Aus")
             return self.send(json.dumps(status()))
+        if u.path == "/lampe":
+            S["lampe"] = parse_qs(u.query).get("f", ["a"])[0]; return self.send(json.dumps(status()))
         if u.path in ("/github", "/update"):
             S["ota"] = "Update laeuft ... (Vorschau)"; return self.send("ok", "text/plain")
         self.send_error(404)

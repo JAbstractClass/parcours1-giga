@@ -33,9 +33,12 @@ const int LED_1       = 16;  // M1 Klemme 16 -> LED -> GND
 const int LED_2       = 17;  // M1 Klemme 17 -> LED -> GND
 const int SERVO_STOPP = 2;   // SERVO 1 (3-polig: Signal an ~2, VCC, GND)
 const int SERVO_STOPP2 = 3;  // SERVO 2: bekommt dasselbe Signal, falls der Servo dort steckt
-// Optional: RGB-LED-Modul (Sensorkit B09) als Statuslampe oben am Turm: R -> D18, G -> D19, "-" -> GND
-const int RGB_R = 18;
-const int RGB_G = 19;
+// Optional: RGB-LED-Modul (Sensorkit B09) als Statuslampe oben am Turm, "-" an GND.
+// Beide Anschlussmoeglichkeiten werden gleichzeitig angesteuert:
+//   R -> IN A0 oder D18,  G -> IN A1 oder D19,  B -> IN A2
+const int RGB_R[] = {A0, 18};
+const int RGB_G[] = {A1, 19};
+const int RGB_B[] = {A2};
 
 const int TASTER_L = A5;     // T_L
 const int TASTER_M = A4;     // T_M
@@ -57,7 +60,7 @@ const int  STOPP_ZU           = 60;    // Servo-Winkel: Kugel gestoppt
 const int  STOPP_AUF          = 120;   // Servo-Winkel: Kugel frei
 const bool STOPP_AUTOMATIK    = true;  // Stoppstelle automatisch takten
 const unsigned long STOPP_INTERVALL_MS = 8000; // Abstand zwischen Freigaben
-const unsigned long STOPP_OFFEN_MS     = 800;  // wie lange offen
+const unsigned long STOPP_OFFEN_MS     = 300;  // Freigabe: so lange offen, dann sofort wieder zu
 const unsigned long ENTPRELL_MS = 40;
 
 // ---------- Zustand ----------
@@ -147,11 +150,15 @@ void setStopp(bool offen) {
   Serial.println(offen ? "Stoppstelle offen" : "Stoppstelle zu");
 }
 
+// Eine Kugel freigeben: kurz auf, stoppUpdate macht nach STOPP_OFFEN_MS wieder zu
+void freigeben() {
+  if (!stoppOffen) setStopp(true);
+}
+
 void stoppUpdate() {
-  if (!STOPP_AUTOMATIK || !aufzugAn) return;
   unsigned long dt = millis() - stoppZeit;
-  if (stoppOffen && dt >= STOPP_OFFEN_MS) setStopp(false);
-  else if (!stoppOffen && dt >= STOPP_INTERVALL_MS) setStopp(true);
+  if (stoppOffen && dt >= STOPP_OFFEN_MS) setStopp(false);          // immer: nur kurz offen
+  else if (STOPP_AUTOMATIK && aufzugAn && !stoppOffen && dt >= STOPP_INTERVALL_MS) setStopp(true);
 }
 
 void status() {
@@ -208,7 +215,7 @@ bool befehl(char c) {
     case 'a': setAufzug(!aufzugAn); return true;
     case 'w': umschalten(weiche);   return true;
     case 'h': umschalten(hebel);    return true;
-    case 's': setStopp(!stoppOffen); return true;
+    case 's': freigeben();          return true;
     case 'l': setLeds(!ledsAn);     return true;
     case 'x': allesStopp(); notAus = true; Serial.println("NOT-AUS"); return true;
     case 't': tasterRoh();          return true;
