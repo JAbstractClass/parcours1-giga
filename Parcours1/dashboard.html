@@ -299,6 +299,7 @@ body.xmas #stage{background:radial-gradient(90% 70% at 50% 40%,#18233a,var(--bg)
   <div class="card">
    <div class="xm"><span class="ic">🎄</span><span class="tx"><b>Weihnachtsmodus</b><small id="xm_s">–</small></span><button class="sw" id="xm_b" data-c="j" aria-label="Weihnachtsmodus"></button></div>
    <div class="up"><button class="btn" id="up_b">Lied hochladen (MP3)</button><button class="btn" id="up_d" style="flex:0 0 auto;padding:0 16px">Löschen</button></div>
+   <div class="rng" style="padding-top:14px"><label><span>Lautstärke</span><output id="vol_o">–</output></label><input type="range" id="vol" min="0" max="100" step="1"></div>
    <input type="file" id="up_f" accept="audio/*,.mp3" hidden>
    <div class="prog" id="up_p"><i></i></div>
   </div>
@@ -519,7 +520,7 @@ const ACT=[
    ['stopp_auto','Automatisch freigeben, wenn der Aufzug läuft'],['stopp_takt','Abstand der Freigaben',1000,30000,500,sec],
    ['sensor_an','Nur freigeben, wenn der Sensor eine Kugel sieht'],['sensor_inv','Sensor-Signal umkehren'],
    ['stopp_nach','Mit Sensor: nach dem Durchrollen noch offen',0,1000,10,ms]]},
- {t:'Lautsprecher',d:'an P15 (D15) über 470 Ω · Weihnachtsmodus',test:['j','An / Aus'],p:[['laut','Lautstärke',0,100,5,v=>v+' %'],['boost','Verstärkung (lauter, etwas verzerrter)',1,10,1,v=>v===1?'aus':v+'×']]},
+ {t:'Lautsprecher',d:'P15 über 470 Ω oder lauter an M6 über 100 Ω',test:['j','An / Aus'],p:[['laut','Lautstärke',0,100,5,v=>v+' %'],['boost','Verstärkung (lauter, etwas verzerrter)',1,10,1,v=>v===1?'aus':v+'×']]},
  {t:'Licht',d:'Rainbow-LEDs an M1',test:['l','An / Aus'],p:[['led_blink','Status als Blinkcode zeigen']]}
 ];
 let CFG={};
@@ -550,6 +551,7 @@ function cfgBuild(){
 }
 function cfgFill(j){
   for(const k in j)if(Array.isArray(j[k]))CFG[k]=j[k][0];
+  if(P1.volSet)P1.volSet(CFG.laut);
   if(CFG.stopp_takt)TAKT=CFG.stopp_takt;
   let chg=0;
   document.querySelectorAll('#cfg_l [data-k]').forEach(e=>{const v=j[e.dataset.k];if(!v)return;const c=v[0]!==v[1];chg+=c;
@@ -617,6 +619,13 @@ $('up_f').onchange=async e=>{
   UPL=false;P.classList.remove('on');poll();
 };
 
+/* Lautstaerke direkt auf der Karte: waehrend des Ziehens alle 150 ms senden */
+{const i=$('vol'),o=$('vol_o');let tm=0,last=-1;
+ const show=()=>{o.textContent=i.value+' %';i.style.setProperty('--p',i.value+'%');};
+ const send=()=>{if(+i.value!==last){last=+i.value;fetch('/einst?k=laut&v='+last,{cache:'no-store'}).catch(()=>{});}};
+ i.oninput=()=>{show();if(!tm)tm=setTimeout(()=>{tm=0;send();},150);};
+ i.onchange=()=>{show();send();};
+ P1.volSet=v=>{if(document.activeElement!==i&&v!==undefined){i.value=v;last=v;show();}};}
 /* ---------- Schnee ---------- */
 (()=>{
   const c=$('snow'),g=c.getContext('2d');let W=0,H=0,F=[];

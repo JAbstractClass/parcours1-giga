@@ -51,6 +51,10 @@ const int N_SENSOR = 1;
 // D15 liefert das Audiosignal als schnelle PWM. Teilt sich der Timer mit einem Motor-Pin, laeuft dessen PWM
 // waehrend der Musik ebenfalls schnell; nach der Musik wird der Takt wieder auf 500 Hz gesetzt.
 const int LAUTSPR_A = 15;      // PWM
+// Fuer deutlich mehr Lautstaerke: Lautsprecher stattdessen an M6 (Buchsen D12/D13) mit ca. 100 Ohm in Reihe.
+// Dort treibt der Motortreiber ihn mit 9 V. Beide Ausgaenge spielen gleichzeitig.
+const int LAUTSPR_M6 = 13;     // PWM (Timer TIM12)
+const int LAUTSPR_M6_GND = 12; // bleibt LOW
 
 const int TASTER_L = A5;     // T_L
 const int TASTER_M = A4;     // T_M
@@ -288,6 +292,7 @@ int VERSTAERKUNG = 5;           // 1..10: hebt leise Stellen an (Kompressor), Sp
 bool weihnacht = false;
 uint32_t liedBytes = 0;
 mbed::PwmOut* audioPwm = nullptr;
+mbed::PwmOut* audioPwm2 = nullptr;
 mbed::Ticker audioTick;
 FILE* liedDatei = nullptr;
 const uint32_t ABUF = 8192;     // ca. 1 s Puffer
@@ -308,8 +313,9 @@ void kurveBauen() {
 }
 
 void audioIsr() {
-  if (aLesen != aSchreiben) { audioPwm->write(aKurve[abuf[aLesen % ABUF]] / 255.0f * aLaut); aLesen++; }
-  else audioPwm->write(0);
+  float v = 0;
+  if (aLesen != aSchreiben) { v = aKurve[abuf[aLesen % ABUF]] / 255.0f * aLaut; aLesen++; }
+  audioPwm->write(v); audioPwm2->write(v);
 }
 
 void lautsprecherStill() {
@@ -318,7 +324,10 @@ void lautsprecherStill() {
     audioPwm->write(0); audioPwm->period_ms(2);
     delete audioPwm; audioPwm = nullptr;
   }
+  if (audioPwm2) { audioPwm2->write(0); audioPwm2->period_ms(2); delete audioPwm2; audioPwm2 = nullptr; }
   pinMode(LAUTSPR_A, OUTPUT); digitalWrite(LAUTSPR_A, LOW);
+  pinMode(LAUTSPR_M6, OUTPUT); digitalWrite(LAUTSPR_M6, LOW);
+  pinMode(LAUTSPR_M6_GND, OUTPUT); digitalWrite(LAUTSPR_M6_GND, LOW);
 }
 
 void musikAus() {
@@ -341,7 +350,9 @@ bool setWeihnacht(bool an) {
   liedDatei = fopen(LIED_DATEI, "rb");
   if (!liedDatei) return false;
   if (!audioPwm) { audioPwm = new mbed::PwmOut(digitalPinToPinName(LAUTSPR_A)); audioPwm->period_us(32); }
-  audioPwm->write(0);
+  if (!audioPwm2) { audioPwm2 = new mbed::PwmOut(digitalPinToPinName(LAUTSPR_M6)); audioPwm2->period_us(32); }
+  digitalWrite(LAUTSPR_M6_GND, LOW);
+  audioPwm->write(0); audioPwm2->write(0);
   kurveBauen();
   aLesen = aSchreiben = 0;
   weihnacht = true;
