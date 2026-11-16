@@ -22,7 +22,7 @@ Im Dashboard oben rechts **Einstellen**: Geschwindigkeit des Aufzugs, Kraft und 
 
 ## Kugelsensor und Weihnachtsmodus
 
-- Der Sensor schaut auf die Kugel, die vor der geschlossenen Stoppstelle wartet. Die Automatik öffnet die Stoppstelle nur, wenn er eine Kugel sieht, und schließt, sobald sie durchgerollt ist. Von Hand (Dashboard, Taste `s`) öffnet sie immer. Jede durchgerollte Kugel erhöht den Zähler („Kugeln durch“). Empfindlichkeit am Poti des Moduls einstellen. Ohne Sensor: unter Einstellen → Stoppstelle „Nur freigeben, wenn der Sensor eine Kugel sieht“ ausschalten.
+- Sensorart unter Einstellen → Stoppstelle wählen. **Shock-Sensor:** meldet den Aufprall der ankommenden Kugel (per Interrupt, auch sehr kurze Impulse), zählt sie und merkt sich „Kugel wartet“ bis zur nächsten Freigabe; „Mindestabstand“ blendet das Nachschwingen der Feder aus. **Reflex-Sensor:** Der Sensor schaut auf die Kugel, die vor der geschlossenen Stoppstelle wartet. Die Automatik öffnet die Stoppstelle nur, wenn er eine Kugel sieht, und schließt, sobald sie durchgerollt ist. Von Hand (Dashboard, Taste `s`) öffnet sie immer. Jede durchgerollte Kugel erhöht den Zähler („Kugeln durch“). Empfindlichkeit am Poti des Moduls einstellen. Ohne Sensor: unter Einstellen → Stoppstelle „Nur freigeben, wenn der Sensor eine Kugel sieht“ ausschalten.
 - Weihnachtsmodus: Im Dashboard ein Lied (MP3) hochladen. Der Browser wandelt es in 8 kHz/8 Bit um und schickt es in den Flash des Giga (`/fs/lied.raw`). Das Lied liegt **nicht** im Repo. Lautstärke unter Einstellen → Lautsprecher.
 
 ## Dashboard bearbeiten
@@ -45,7 +45,7 @@ Beim Bauen wird daraus automatisch `Parcours1/Dashboard.h` erzeugt (`tools/html2
 | Stoppstelle (Servo) | SERVO 1 | D2 |
 | Rainbow-LED 1 / 2 | M1 Klemme 16 / 17 → GND | D16 / D17 |
 | Taster links / Mitte / rechts | A5 / A4 / A3 → GND | |
-| Kugelsensor (IR-Reflex, Sensorkit B04) | VCC → **3,3 V** (nie 5 V), GND → GND, DOUT → IN A6 | A6 |
+| Kugelsensor (Shock B23 oder IR-Reflex B04) | VCC → **3,3 V** (nie 5 V), GND → GND, OUT → IN A6 | A6 |
 | Lautsprecher (2 Pins) | leise: Pin 1 → **P15** über **mind. 470 Ω**, Pin 2 → GND · laut: an **M6** über ca. 100 Ω (beide spielen gleichzeitig) | D15 · D12/D13 |
 | Statuslampe RGB-Modul (B09, optional) | R → A0/D18, G → A1/D19, B → A2, „–“ → GND | |
 

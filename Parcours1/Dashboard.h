@@ -219,6 +219,8 @@ body.xmas .xm .ic{background:linear-gradient(140deg,#c81d25,#1f7a3a)}
 .sen.off .led::after{background:var(--card3)}
 .sen .tx{flex:1;min-width:0}.sen .tx b{display:block;font:650 17px var(--sans)}.sen .tx small{display:block;font:12px var(--mono);color:var(--muted);margin-top:3px}
 .sen .n{text-align:right}.sen .n b{display:block;font:700 26px var(--sans);font-variant-numeric:tabular-nums;letter-spacing:-.02em}.sen .n small{font:11px var(--sans);color:var(--muted)}
+.sen.hit .led{background:rgba(255,255,255,.2);box-shadow:0 0 0 10px rgba(255,255,255,.06),0 0 30px rgba(255,255,255,.5)}
+.sen.hit .led::after{background:#fff}
 .sen .n b.bump{animation:bump .5s var(--ease)}
 @keyframes bump{30%{transform:scale(1.25);color:var(--ok)}}
 #sen_t{display:block;width:100%;height:34px;margin-top:12px}
@@ -469,10 +471,11 @@ function render(s){
   $('k_sw').textContent=s.kugeln!==undefined?s.kugeln:swc;
   rowSet('z_k',!!s.kugel,(!s.sensor?'Aus · gibt ohne Prüfung frei':s.kugel?'Kugel wartet':'Keine Kugel')+(s.pegel?' · '+s.pegel:''));
   {const e=$('sen');e.classList.toggle('on',!!s.kugel);e.classList.toggle('off',!s.sensor);
-   $('sen_s').textContent=s.kugel?'Kugel erkannt':'Keine Kugel';
-   $('sen_p').textContent=(s.pegel||'')+(s.sensor?' · Automatik prüft Sensor':' · Prüfung aus');
+   const shock=s.styp===1,hit=shock&&s.stoss<700;e.classList.toggle('hit',hit);
+   $('sen_s').textContent=shock?(hit?'Stoß! Kugel angekommen':s.kugel?'Kugel wartet':'Warte auf Kugel'):(s.kugel?'Kugel erkannt':'Keine Kugel');
+   $('sen_p').textContent=(shock?'Shock · ':'Reflex · ')+(s.pegel||'')+(s.sensor?' · Automatik prüft':' · Prüfung aus');
    const nb=$('sen_n');if(nb.textContent!==String(s.kugeln)){nb.textContent=s.kugeln;nb.classList.remove('bump');nb.offsetWidth;nb.classList.add('bump');}
-   hsSet('k',!!s.kugel,s.kugel?'Kugel':'leer');SEN.push([performance.now(),!!s.kugel]);}
+   hsSet('k',!!s.kugel||hit,hit?'Stoß':s.kugel?'Kugel':'leer');SEN.push([performance.now(),!!s.kugel||hit]);}
   B.classList.toggle('xmas',!!s.weihnacht);$('xm_b').classList.toggle('on',!!s.weihnacht);
   const lm=s.lied?Math.floor(s.lied/60)+':'+String(s.lied%60).padStart(2,'0'):'';
   if(!UPL)$('xm_s').textContent=!s.lied?'Noch kein Lied auf dem Giga · erst hochladen':s.weihnacht?'Es schneit · Lied läuft ('+lm+')':'Lied auf dem Giga ('+lm+') · Schnee und Musik';
@@ -542,8 +545,9 @@ const ACT=[
    ['stopp_zu','Winkel geschlossen',0,180,1,deg],['stopp_auf','Winkel offen',0,180,1,deg],
    ['stopp_ms','Offen für',30,1500,10,ms],['stopp_tempo','Tempo',0,30,1,v=>v?v*100+' °/s':'maximal'],
    ['stopp_auto','Automatisch freigeben, wenn der Aufzug läuft'],['stopp_takt','Abstand der Freigaben',1000,30000,500,sec],
-   ['sensor_an','Automatik gibt nur frei, wenn der Sensor eine Kugel sieht'],['sensor_inv','Sensor-Signal umkehren'],
-   ['stopp_nach','Mit Sensor: nach dem Durchrollen noch offen',0,1000,10,ms]]},
+   ['sensor_an','Automatik gibt nur frei, wenn der Sensor eine Kugel meldet'],['sensor_typ','Erschütterungssensor (Shock) statt Reflexsensor'],
+   ['sensor_sperr','Shock: Mindestabstand zwischen zwei Kugeln',20,2000,10,ms],['sensor_inv','Reflex: Signal umkehren'],
+   ['stopp_nach','Reflex: nach dem Durchrollen noch offen',0,1000,10,ms]]},
  {t:'Lautsprecher',d:'P15 über 470 Ω oder lauter an M6 über 100 Ω',test:['j','An / Aus'],p:[['laut','Lautstärke',0,100,5,v=>v+' %'],['boost','Verstärkung (lauter, etwas verzerrter)',1,10,1,v=>v===1?'aus':v+'×']]},
  {t:'Licht',d:'Rainbow-LEDs an M1',test:['l','An / Aus'],p:[['led_blink','Status als Blinkcode zeigen']]}
 ];

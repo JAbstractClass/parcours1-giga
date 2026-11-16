@@ -41,8 +41,10 @@ const int RGB_R[] = {A0, 18};
 const int RGB_G[] = {A1, 19};
 const int RGB_B[] = {A2};
 
-// Kugelsensor an der Stoppstelle: IR-Reflexsensor (Sensorkit B04), Versorgung 3,3 V (nie 5 V!).
-// DOUT an IN A6, "Kugel" = LOW.
+// Kugelsensor an der Stoppstelle, OUT an IN A6, Versorgung 3,3 V (nie 5 V - A6 vertraegt hoechstens 3,3 V!).
+// Zwei Arten (Einstellung sensor_typ):
+//   0 = Reflex-/Lichtsensor (B04): meldet LOW, solange eine Kugel davor liegt
+//   1 = Erschuetterungssensor (Shock, B23): kurzer Impuls, wenn eine Kugel aufschlaegt -> per Interrupt gezaehlt
 const int SENSOR_PINS[] = {A6};
 const char* SENSOR_NAMEN[] = {"A6"};
 const int N_SENSOR = 1;
@@ -85,6 +87,8 @@ int STOPP_INTERVALL_MS = 8000;  // Abstand zwischen automatischen Freigaben
 int SENSOR_AN          = 1;     // 1 = Stoppstelle gibt nur frei, wenn der Sensor eine Kugel sieht
 int SENSOR_INV         = 0;     // 1, falls der Sensor "Kugel" und "keine Kugel" vertauscht meldet
 int STOPP_NACHLAUF_MS  = 120;   // mit Sensor: so lange nach dem Durchrollen noch offen, dann zu
+int SENSOR_TYP         = 1;     // 0 = Reflex (Kugel liegt davor), 1 = Shock (Kugel schlaegt auf)
+int SENSOR_SPERR_MS    = 300;   // Shock: Mindestabstand zwischen zwei Kugeln (Prellen der Feder ausblenden)
 const unsigned long ENTPRELL_MS = 40;
 
 // ---------- Zustand ----------
@@ -200,7 +204,25 @@ bool sensorRoh() {
   return SENSOR_INV ? !r : r;
 }
 
+// Shock: Impulse sind oft kuerzer als ein loop-Durchlauf -> jede Flanke per Interrupt mitzaehlen
+volatile uint32_t stossFlanken = 0;
+uint32_t stossGesehen = 0;
+unsigned long stossZeit = 0;
+void stossIsr() { stossFlanken++; }
+
 void sensorUpdate() {
+  if (SENSOR_TYP == 1) {
+    uint32_t f = stossFlanken;
+    if (f != stossGesehen) {
+      stossGesehen = f;
+      if (millis() - stossZeit >= (unsigned long)SENSOR_SPERR_MS) {   // neue Kugel, nicht nur Nachschwingen
+        stossZeit = millis();
+        kugelDa = true;                               // wartet jetzt an der Stoppstelle, bis freigegeben wird
+        if (SENSOR_AN) { kugelZaehler++; Serial.print("Kugel angekommen (Stoss), Zaehler "); Serial.println(kugelZaehler); }
+      }
+    }
+    return;
+  }
   bool r = sensorRoh();
   if (r != kugelRoh) { kugelRoh = r; kugelSeit = millis(); }
   if (millis() - kugelSeit < 25 || kugelDa == kugelRoh) return;   // entprellen
@@ -217,6 +239,7 @@ bool freigeben(bool manuell) {
   if (stoppOffen) return true;
   if (!manuell && SENSOR_AN && !kugelDa) return false;
   if (!SENSOR_AN) kugelZaehler++;                 // ohne Sensor: Freigaben zaehlen
+  if (SENSOR_TYP == 1) kugelDa = false;            // Shock: die gemeldete Kugel ist damit weg
   setStopp(true);
   return true;
 }
@@ -225,7 +248,7 @@ void stoppUpdate() {
   unsigned long dt = millis() - stoppZeit;
   if (stoppOffen) {
     // zu, sobald die Kugel durch ist (mit Sensor) oder spaetestens nach STOPP_OFFEN_MS
-    bool durch = SENSOR_AN && !kugelDa && kugelWeg > stoppZeit && millis() - kugelWeg >= (unsigned long)STOPP_NACHLAUF_MS;
+    bool durch = SENSOR_AN && SENSOR_TYP == 0 && !kugelDa && kugelWeg > stoppZeit && millis() - kugelWeg >= (unsigned long)STOPP_NACHLAUF_MS;
     if (durch || dt >= (unsigned long)STOPP_OFFEN_MS) setStopp(false);
   } else if (STOPP_AUTOMATIK && aufzugAn && dt >= (unsigned long)STOPP_INTERVALL_MS) {
     if (!freigeben(false)) stoppZeit = millis() - STOPP_INTERVALL_MS + 300;   // keine Kugel: gleich nochmal schauen
@@ -416,6 +439,7 @@ void setup() {
   tasterInit(tM);
   tasterInit(tR);
   for (int i = 0; i < N_SENSOR; i++) pinMode(SENSOR_PINS[i], INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(SENSOR_PINS[0]), stossIsr, CHANGE);
   pinMode(LAUTSPR_A, OUTPUT); lautsprecherStill();
 
   Serial.println("Parcours 1 bereit.");

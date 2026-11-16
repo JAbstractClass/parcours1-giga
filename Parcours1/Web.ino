@@ -237,6 +237,8 @@ String statusJson() {
   s += ",\"kugel\":";     s += kugelDa ? "true" : "false";
   s += ",\"kugeln\":";    s += String(kugelZaehler);
   s += ",\"sensor\":";    s += SENSOR_AN ? "true" : "false";
+  s += ",\"styp\":";      s += SENSOR_TYP;
+  s += ",\"stoss\":";     s += stossZeit ? String(min(99999UL, millis() - stossZeit)) : String(99999);
   s += ",\"pegel\":\"";
   for (int i = 0; i < N_SENSOR; i++) { if (i) s += " "; s += SENSOR_NAMEN[i]; s += digitalRead(SENSOR_PINS[i]) ? "=1" : "=0"; }
   s += "\"";
