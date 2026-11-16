@@ -23,6 +23,7 @@ Param PARAMS[] = {
   {"sensor_inv",  &SENSOR_INV,        0,   1,     0},
   {"stopp_nach",  &STOPP_NACHLAUF_MS, 0,   1000,  0},
   {"laut",        &LAUTSTAERKE,       0,   100,   0},
+  {"boost",       &VERSTAERKUNG,      1,   10,    0},
 };
 const int N_PARAMS = sizeof(PARAMS) / sizeof(PARAMS[0]);
 const char* EINST_DATEI = "/fs/einst.txt";

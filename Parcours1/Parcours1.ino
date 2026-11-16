@@ -284,6 +284,7 @@ extern bool otaBereit;        // Flash-Speicher eingebunden (Web.ino)
 const char* LIED_DATEI = "/fs/lied.raw";
 const int AUDIO_RATE = 8000;
 int LAUTSTAERKE = 100;          // 0..100 %
+int VERSTAERKUNG = 5;           // 1..10: hebt leise Stellen an (Kompressor), Spitzen werden weich begrenzt
 bool weihnacht = false;
 uint32_t liedBytes = 0;
 mbed::PwmOut* audioPwm = nullptr;
@@ -293,9 +294,21 @@ const uint32_t ABUF = 8192;     // ca. 1 s Puffer
 volatile uint8_t abuf[ABUF];
 volatile uint32_t aLesen = 0, aSchreiben = 0;
 volatile float aLaut = 0;
+uint8_t aKurve[256];            // Kennlinie: Rohwert -> Ausgang (weiche Begrenzung)
+int aKurveFuer = -1;
+
+void kurveBauen() {
+  float g = max(1, VERSTAERKUNG), n = tanhf(g);
+  for (int i = 0; i < 256; i++) {
+    float x = (i - 128) / 128.0f;
+    float y = g <= 1 ? x : tanhf(g * x) / n;
+    aKurve[i] = (uint8_t)constrain((int)lroundf(128 + y * 127), 0, 255);
+  }
+  aKurveFuer = VERSTAERKUNG;
+}
 
 void audioIsr() {
-  if (aLesen != aSchreiben) { audioPwm->write(abuf[aLesen % ABUF] / 255.0f * aLaut); aLesen++; }
+  if (aLesen != aSchreiben) { audioPwm->write(aKurve[abuf[aLesen % ABUF]] / 255.0f * aLaut); aLesen++; }
   else audioPwm->write(0);
 }
 
@@ -329,6 +342,7 @@ bool setWeihnacht(bool an) {
   if (!liedDatei) return false;
   if (!audioPwm) { audioPwm = new mbed::PwmOut(digitalPinToPinName(LAUTSPR_A)); audioPwm->period_us(32); }
   audioPwm->write(0);
+  kurveBauen();
   aLesen = aSchreiben = 0;
   weihnacht = true;
   musikUpdate();                                   // Puffer vorfuellen
@@ -341,6 +355,7 @@ bool setWeihnacht(bool an) {
 void musikUpdate() {
   if (!weihnacht || !liedDatei) return;
   aLaut = LAUTSTAERKE / 100.0f;
+  if (aKurveFuer != VERSTAERKUNG) kurveBauen();
   uint8_t tmp[512];
   while (ABUF - (aSchreiben - aLesen) > sizeof(tmp)) {
     size_t n = fread(tmp, 1, sizeof(tmp), liedDatei);

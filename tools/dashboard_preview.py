@@ -12,7 +12,7 @@ GIGA = sys.argv[1] if len(sys.argv) > 1 else ""
 START = time.time()
 E = {"aufzug_pwm": 200, "aufzug_umk": 0, "weiche_pwm": 255, "weiche_ms": 750, "weiche_umk": 0, "hebel_pwm": 180,
      "hebel_ms": 350, "hebel_umk": 0, "stopp_zu": 60, "stopp_auf": 120, "stopp_ms": 180, "stopp_tempo": 0,
-     "stopp_auto": 1, "stopp_takt": 8000, "led_blink": 1, "sensor_an": 1, "sensor_inv": 0, "stopp_nach": 120, "laut": 100}
+     "stopp_auto": 1, "stopp_takt": 8000, "led_blink": 1, "sensor_an": 1, "sensor_inv": 0, "stopp_nach": 120, "laut": 100, "boost": 5}
 E0 = dict(E)
 def einst(): return json.dumps({**{k: [v, E0[k]] for k, v in E.items()}, "gespeichert": True})
 S = {"aufzug": False, "leds": True, "stopp": False, "weiche": 1, "hebel": 1,
