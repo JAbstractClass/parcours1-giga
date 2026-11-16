@@ -38,14 +38,15 @@ button:focus-visible{outline:2px solid #fff;outline-offset:2px}
 #stage::after{content:"";position:absolute;z-index:1;inset:auto 0 0;height:90px;background:linear-gradient(transparent,var(--bg));pointer-events:none}
 .top{position:absolute;inset:0 0 auto;z-index:3;display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:calc(22px + env(safe-area-inset-top)) 28px 0;pointer-events:none}
 .top>*{pointer-events:auto}
-.brand{display:inline-flex;align-items:center;gap:10px;height:32px;padding:0 14px 0 11px;border-radius:16px;background:rgba(255,255,255,.05);border:1px solid var(--line);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);color:var(--ink);transition:border-color 1s}
+.brand{display:none;align-items:center;gap:10px;height:32px;padding:0 14px 0 11px;border-radius:16px;background:rgba(255,255,255,.05);border:1px solid var(--line);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);color:var(--ink);transition:border-color 1s}
 .brand i{position:relative;width:9px;height:9px;border-radius:50%;background:var(--faint);transition:background .6s}
 body.live .brand i{background:var(--amb)}
 body.live .brand i::after{content:"";position:absolute;inset:-5px;border-radius:50%;border:2px solid var(--amb);opacity:0;animation:ping 2.4s var(--ease) infinite}
 @keyframes ping{0%{transform:scale(.4);opacity:.9}100%{transform:scale(1.6);opacity:0}}
 body.lost .brand i{background:var(--red)}
 body.amp-r .brand{border-color:rgba(255,59,48,.5)}
-h1{font:800 clamp(48px,8vw,118px)/.92 var(--sans);letter-spacing:-.055em;margin-top:18px;padding-bottom:.06em;background:linear-gradient(180deg,#fff 30%,rgba(255,255,255,.55));-webkit-background-clip:text;background-clip:text;color:transparent;overflow:hidden;pointer-events:none}
+body.lost .brand,body.amp-o .brand{display:inline-flex;margin-bottom:16px}
+h1{font:800 clamp(48px,8vw,118px)/.92 var(--sans);letter-spacing:-.055em;margin-top:0;padding-bottom:.06em;background:linear-gradient(180deg,#fff 30%,rgba(255,255,255,.55));-webkit-background-clip:text;background-clip:text;color:transparent;overflow:hidden;pointer-events:none}
 h1 b{display:block;font-weight:inherit;transition:transform .7s var(--ease)}
 h1.swap b{transform:translateY(105%)}
 body.run h1{background-image:linear-gradient(180deg,#ff5a4f 20%,#e30613)}
@@ -224,6 +225,9 @@ kbd{font:600 11px var(--mono);background:var(--tile);border:1px solid var(--line
   <button class="btn wide" id="ghbtn"><span>Jetzt von GitHub laden</span></button>
   <details><summary>Von eigener Adresse laden</summary><input id="url" spellcheck="false" autocomplete="off"><button class="btn wide" id="urlbtn"><span>Update starten</span></button></details>
  </div>
+
+ <h3 class="lbl">Stoppstelle</h3>
+ <div class="card"><p class="keys" style="line-height:1.5">Fährt den Servo einmal ganz auf und zu (an SERVO 1 und SERVO 2). Bewegt sich nichts: Stecker drehen, Signal muss an ~2.</p><button class="btn wide" data-c="v"><span>Servo testen</span></button></div>
 
  <h3 class="lbl">Verlauf · letzte 2 Minuten</h3>
  <div class="card" style="padding:6px 0"><canvas id="scope"></canvas></div>

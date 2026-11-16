@@ -14,7 +14,7 @@
 //   l = LEDs     t = Taster-Rohwerte   ? = Status
 //   m = Taster-Rohwerte live an/aus      p = alle Analogpins
 //   x = alles stoppen   n = WLANs in Reichweite anzeigen
-//   g = GitHub-Verbindung testen   u = Update von GitHub jetzt laden
+//   g = GitHub-Verbindung testen   u = Update von GitHub jetzt laden   v = Servo-Test
 //
 // WLAN, Weboberflaeche und OTA-Update: siehe Web.ino und arduino_secrets.h
 
@@ -31,7 +31,11 @@ const int HEBEL_A     = 8;   // M4 Stellweiche mit Weichenhebel
 const int HEBEL_B     = 9;   // M4
 const int LED_1       = 16;  // M1 Klemme 16 -> LED -> GND
 const int LED_2       = 17;  // M1 Klemme 17 -> LED -> GND
-const int SERVO_STOPP = 2;   // SERVO 1
+const int SERVO_STOPP = 2;   // SERVO 1 (3-polig: Signal an ~2, VCC, GND)
+const int SERVO_STOPP2 = 3;  // SERVO 2: bekommt dasselbe Signal, falls der Servo dort steckt
+// Optional: RGB-LED-Modul (Sensorkit B09) als Statuslampe oben am Turm: R -> D18, G -> D19, "-" -> GND
+const int RGB_R = 18;
+const int RGB_G = 19;
 
 const int TASTER_L = A5;     // T_L
 const int TASTER_M = A4;     // T_M
@@ -43,7 +47,7 @@ const bool AUFZUG_UMKEHREN    = false; // true, falls Aufzug falsch herum laeuft
 // Weichenmotoren: Kraft (0..255) und Fahrzeit bis Anschlag, je Weiche einzeln.
 // Kommt eine Weiche nicht bis zum Anschlag: Fahrzeit erhoehen. Brummt sie am Anschlag: verringern.
 const int  WEICHE_PWM         = 255;   // Weiche 1 (Flexschiene, M3): volle Kraft
-const unsigned long WEICHE_PULS_MS = 650; // Weiche 1: laengerer Stellweg
+const unsigned long WEICHE_PULS_MS = 750; // Weiche 1: laengerer Stellweg
 const int  HEBEL_PWM          = 180;   // Weiche 2 (Weichenhebel, M4)
 const unsigned long HEBEL_PULS_MS  = 350;
 // Rainbow-LEDs koennen ihre Farbe nicht waehlen -> Zustand als Blinkcode:
@@ -57,7 +61,8 @@ const unsigned long STOPP_OFFEN_MS     = 800;  // wie lange offen
 const unsigned long ENTPRELL_MS = 40;
 
 // ---------- Zustand ----------
-Servo stopp;
+Servo stopp, stopp2;
+void servoWinkel(int w) { stopp.write(w); stopp2.write(w); }
 bool aufzugAn = false, ledsAn = true, stoppOffen = false;
 bool notAus = false;            // 'x' gedrueckt: bleibt rot, bis der Aufzug wieder gestartet wird
 bool weicheLinks = true, hebelLinks = true;
@@ -137,7 +142,7 @@ void setLeds(bool an) {
 
 void setStopp(bool offen) {
   stoppOffen = offen;
-  stopp.write(offen ? STOPP_AUF : STOPP_ZU);
+  servoWinkel(offen ? STOPP_AUF : STOPP_ZU);
   stoppZeit = millis();
   Serial.println(offen ? "Stoppstelle offen" : "Stoppstelle zu");
 }
@@ -178,6 +183,17 @@ void scanAnalog() {
   pinMode(TASTER_L, INPUT_PULLUP); pinMode(TASTER_M, INPUT_PULLUP); pinMode(TASTER_R, INPUT_PULLUP);
 }
 
+// Servo-Test ('v'): langsam ganz auf und zu fahren, damit man sieht, ob er ueberhaupt reagiert
+void servoTest() {
+  Serial.println("Servo-Test an D2 und D3: 0 -> 180 -> Ruhestellung");
+  for (int w = 0; w <= 180; w += 5) { servoWinkel(w); delay(25); }
+  delay(400);
+  for (int w = 180; w >= 0; w -= 5) { servoWinkel(w); delay(25); }
+  delay(400);
+  servoWinkel(stoppOffen ? STOPP_AUF : STOPP_ZU);
+  Serial.println("Servo-Test fertig. Nichts bewegt? Stecker drehen (Signal an ~2) und 9V-Netzteil pruefen.");
+}
+
 // alle Motoren aus (z. B. vor einem Update)
 void allesStopp() {
   setAufzug(false);
@@ -202,6 +218,7 @@ bool befehl(char c) {
     case 'u': githubUpdateAnfordern(); return true;
     case 'p': scanAnalog();         return true;
     case 'm': live = !live;         return true;
+    case 'v': servoTest();          return true;
   }
   return false;
 }
@@ -214,7 +231,8 @@ void setup() {
   motor(WEICHE_A, WEICHE_B, 0);
   motor(HEBEL_A, HEBEL_B, 0);
   stopp.attach(SERVO_STOPP);
-  stopp.write(STOPP_ZU);
+  stopp2.attach(SERVO_STOPP2);
+  servoWinkel(STOPP_ZU);
   setLeds(true);
 
   // aktuellen Tasterzustand uebernehmen, damit beim Start nichts ausloest

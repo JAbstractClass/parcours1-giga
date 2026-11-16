@@ -46,6 +46,7 @@ class H(BaseHTTPRequestHandler):
             elif c == "h": S["hebel"] = 3 - S["hebel"]
             elif c == "s": S["stopp"] = not S["stopp"]
             elif c == "l": S["leds"] = not S["leds"]
+            elif c == "v": pass
             elif c == "x": S.update(aufzug=False, stopp=False, notaus=True, ampel="r", grund="Not-Aus")
             return self.send(json.dumps(status()))
         if u.path in ("/github", "/update"):

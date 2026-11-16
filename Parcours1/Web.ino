@@ -187,11 +187,14 @@ String ampelGrund() {
 // Farbe auf der RGB-LED des Giga (leuchtet bei LOW), Blinkcode auf den Rainbow-LEDs
 void ledUpdate() {
   static bool init = false;
-  if (!init) { pinMode(LEDR, OUTPUT); pinMode(LEDG, OUTPUT); pinMode(LEDB, OUTPUT); init = true; }
+  if (!init) { pinMode(LEDR, OUTPUT); pinMode(LEDG, OUTPUT); pinMode(LEDB, OUTPUT); pinMode(RGB_R, OUTPUT); pinMode(RGB_G, OUTPUT); init = true; }
   char a = ampel();
   digitalWrite(LEDR, (a == 'r' || a == 'o') ? LOW : HIGH);
   digitalWrite(LEDG, (a == 'g' || a == 'o') ? LOW : HIGH);   // Rot + Gruen = Orange/Gelb
   digitalWrite(LEDB, HIGH);
+  // RGB-Modul oben am Turm (leuchtet bei HIGH)
+  digitalWrite(RGB_R, (a == 'r' || a == 'o') ? HIGH : LOW);
+  digitalWrite(RGB_G, (a == 'g' || a == 'o') ? HIGH : LOW);
   bool an = ledsAn;
   if (an && LED_BLINKCODE) {
     if (a == 'r') an = (millis() / 150) % 2 == 0;
@@ -299,7 +302,7 @@ void webLoop() {
     antwort(c, "application/json", statusJson());
   } else if (pfad.startsWith("/cmd")) {
     String cm = param(pfad, "c");
-    if (cm.length() == 1 && strchr("awhslx", cm[0])) befehl(cm[0]);
+    if (cm.length() == 1 && strchr("awhslxv", cm[0])) befehl(cm[0]);
     antwort(c, "application/json", statusJson());
   } else if (pfad.startsWith("/github")) {
     githubUpdateAnfordern();
