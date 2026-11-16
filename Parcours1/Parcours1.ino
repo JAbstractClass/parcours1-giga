@@ -41,8 +41,12 @@ const int RGB_R[] = {A0, 18};
 const int RGB_G[] = {A1, 19};
 const int RGB_B[] = {A2};
 
-// Kugelsensor an der Stoppstelle: IR-Reflexsensor (Sensorkit B04), Versorgung 3,3 V (nie 5 V!), DOUT -> IN A6
-const int SENSOR_KUGEL = A6;
+// Kugelsensor an der Stoppstelle: IR-Reflexsensor (Sensorkit B04), Versorgung 3,3 V (nie 5 V!).
+// DOUT darf an IN A6 oder an die 8er-Stiftleiste (NRF24L01-Platz: D14/D15) - alle drei werden gelesen,
+// "Kugel" = irgendeiner davon ist LOW. Unbelegte Eingaenge liegen per Pull-up auf HIGH.
+const int SENSOR_PINS[] = {A6, 14, 15};
+const char* SENSOR_NAMEN[] = {"A6", "D14", "D15"};
+const int N_SENSOR = 3;
 // Lautsprecher (2 Pins) an M6 (D12/D13) ueber den Motortreiber, mit ca. 100 Ohm Vorwiderstand.
 // D13 liefert das Audiosignal als schnelle PWM (eigener Timer TIM12; D10 an M5 teilt sich TIM1 mit dem Aufzug).
 const int LAUTSPR_A = 13;      // PWM
@@ -187,7 +191,8 @@ unsigned long kugelSeit = 0, kugelWeg = 0;
 uint32_t kugelZaehler = 0;      // Kugeln, die durch die Stoppstelle gerollt sind (seit Neustart)
 
 bool sensorRoh() {
-  bool r = digitalRead(SENSOR_KUGEL) == LOW;   // Modul zieht DOUT auf LOW, wenn es etwas sieht
+  bool r = false;                              // Modul zieht DOUT auf LOW, wenn es etwas sieht
+  for (int i = 0; i < N_SENSOR; i++) if (digitalRead(SENSOR_PINS[i]) == LOW) r = true;
   return SENSOR_INV ? !r : r;
 }
 
@@ -381,7 +386,7 @@ void setup() {
   tasterInit(tL);
   tasterInit(tM);
   tasterInit(tR);
-  pinMode(SENSOR_KUGEL, INPUT_PULLUP);
+  for (int i = 0; i < N_SENSOR; i++) pinMode(SENSOR_PINS[i], INPUT_PULLUP);
   pinMode(LAUTSPR_A, OUTPUT); pinMode(LAUTSPR_B, OUTPUT); lautsprecherStill();
 
   Serial.println("Parcours 1 bereit.");

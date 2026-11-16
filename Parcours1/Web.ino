@@ -237,6 +237,9 @@ String statusJson() {
   s += ",\"kugel\":";     s += kugelDa ? "true" : "false";
   s += ",\"kugeln\":";    s += String(kugelZaehler);
   s += ",\"sensor\":";    s += SENSOR_AN ? "true" : "false";
+  s += ",\"pegel\":\"";
+  for (int i = 0; i < N_SENSOR; i++) { if (i) s += " "; s += SENSOR_NAMEN[i]; s += digitalRead(SENSOR_PINS[i]) ? "=1" : "=0"; }
+  s += "\"";
   s += ",\"weihnacht\":"; s += weihnacht ? "true" : "false";
   s += ",\"lied\":";      s += String(liedBytes / AUDIO_RATE);
   s += ",\"grund\":\"";   s += ampelGrund();

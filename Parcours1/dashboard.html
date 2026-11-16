@@ -446,7 +446,7 @@ function render(s){
     if(p.ota!==s.ota&&s.ota)log(s.ota);
   }else log('Verbunden · '+s.ip);
   $('k_sw').textContent=s.kugeln!==undefined?s.kugeln:swc;
-  rowSet('z_k',!!s.kugel,!s.sensor?'Aus · Stoppstelle gibt ohne Prüfung frei':s.kugel?'Kugel wartet an der Stoppstelle':'Keine Kugel an der Stoppstelle');
+  rowSet('z_k',!!s.kugel,(!s.sensor?'Aus · gibt ohne Prüfung frei':s.kugel?'Kugel wartet':'Keine Kugel')+(s.pegel?' · '+s.pegel:''));
   B.classList.toggle('xmas',!!s.weihnacht);$('xm_b').classList.toggle('on',!!s.weihnacht);
   const lm=s.lied?Math.floor(s.lied/60)+':'+String(s.lied%60).padStart(2,'0'):'';
   if(!UPL)$('xm_s').textContent=!s.lied?'Noch kein Lied auf dem Giga · erst hochladen':s.weihnacht?'Es schneit · Lied läuft ('+lm+')':'Lied auf dem Giga ('+lm+') · Schnee und Musik';
