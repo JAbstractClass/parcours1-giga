@@ -45,27 +45,45 @@ const int TASTER_M = A4;     // T_M
 const int TASTER_R = A3;     // T_R
 
 // ---------- Kalibrierung ----------
-const int  AUFZUG_PWM         = 200;   // 0..255, Geschwindigkeit Kettenaufzug
-const bool AUFZUG_UMKEHREN    = false; // true, falls Aufzug falsch herum laeuft
+// Startwerte. Im Dashboard unter "Einstellen" live aenderbar; geaenderte Werte
+// speichert der Giga im Flash (/fs/einst.txt), sie gelten auch nach Neustart und Update.
+int AUFZUG_PWM         = 200;   // 0..255, Geschwindigkeit Kettenaufzug
+int AUFZUG_UMKEHREN    = 0;     // 1, falls Aufzug falsch herum laeuft
 // Weichenmotoren: Kraft (0..255) und Fahrzeit bis Anschlag, je Weiche einzeln.
 // Kommt eine Weiche nicht bis zum Anschlag: Fahrzeit erhoehen. Brummt sie am Anschlag: verringern.
-const int  WEICHE_PWM         = 255;   // Weiche 1 (Flexschiene, M3): volle Kraft
-const unsigned long WEICHE_PULS_MS = 750; // Weiche 1: laengerer Stellweg
-const int  HEBEL_PWM          = 180;   // Weiche 2 (Weichenhebel, M4)
-const unsigned long HEBEL_PULS_MS  = 350;
+int WEICHE_PWM         = 255;   // Weiche 1 (Flexschiene, M3)
+int WEICHE_PULS_MS     = 750;
+int WEICHE_UMKEHREN    = 0;
+int HEBEL_PWM          = 180;   // Weiche 2 (Weichenhebel, M4)
+int HEBEL_PULS_MS      = 350;
+int HEBEL_UMKEHREN     = 0;
 // Rainbow-LEDs koennen ihre Farbe nicht waehlen -> Zustand als Blinkcode:
 // Dauerlicht = alles ok, langsam blinken = kein Internet, schnell blinken = Fehler / Not-Aus
-const bool LED_BLINKCODE      = true;
-const int  STOPP_ZU           = 60;    // Servo-Winkel: Kugel gestoppt
-const int  STOPP_AUF          = 120;   // Servo-Winkel: Kugel frei
-const bool STOPP_AUTOMATIK    = true;  // Stoppstelle automatisch takten
-const unsigned long STOPP_INTERVALL_MS = 8000; // Abstand zwischen Freigaben
-const unsigned long STOPP_OFFEN_MS     = 300;  // Freigabe: so lange offen, dann sofort wieder zu
+int LED_BLINKCODE      = 1;
+int STOPP_ZU           = 60;    // Servo-Winkel: Kugel gestoppt
+int STOPP_AUF          = 120;   // Servo-Winkel: Kugel frei
+int STOPP_OFFEN_MS     = 180;   // Freigabe: so lange offen, dann sofort wieder zu
+int STOPP_TEMPO        = 0;     // 0 = Servo faehrt so schnell er kann, sonst Grad pro 10 ms
+int STOPP_AUTOMATIK    = 1;     // Stoppstelle automatisch takten, solange der Aufzug laeuft
+int STOPP_INTERVALL_MS = 8000;  // Abstand zwischen automatischen Freigaben
 const unsigned long ENTPRELL_MS = 40;
 
 // ---------- Zustand ----------
 Servo stopp, stopp2;
-void servoWinkel(int w) { stopp.write(w); stopp2.write(w); }
+int servoIst = -1, servoSoll = 60;     // aktueller und Ziel-Winkel
+unsigned long servoSchritt = 0;
+void servoSchreiben(int w) { servoIst = w; stopp.write(w); stopp2.write(w); }
+// Ziel setzen; mit STOPP_TEMPO > 0 faehrt servoUpdate() langsam hin
+void servoWinkel(int w) {
+  servoSoll = constrain(w, 0, 180);
+  if (STOPP_TEMPO <= 0 || servoIst < 0) servoSchreiben(servoSoll);
+}
+void servoUpdate() {
+  if (servoIst == servoSoll || millis() - servoSchritt < 10) return;
+  servoSchritt = millis();
+  int d = servoSoll - servoIst, s = max(1, STOPP_TEMPO);
+  servoSchreiben(servoIst + constrain(d, -s, s));
+}
 bool aufzugAn = false, ledsAn = true, stoppOffen = false;
 bool notAus = false;            // 'x' gedrueckt: bleibt rot, bis der Aufzug wieder gestartet wird
 bool weicheLinks = true, hebelLinks = true;
@@ -80,13 +98,14 @@ void motor(int pinA, int pinB, int speed) {
 }
 
 // ---------- Weichen: nicht-blockierender Stellpuls ----------
-Stellmotor weiche = {WEICHE_A, WEICHE_B, "Weiche", true, 0, false, WEICHE_PWM, WEICHE_PULS_MS};
-Stellmotor hebel  = {HEBEL_A,  HEBEL_B,  "Hebel",  true, 0, false, HEBEL_PWM,  HEBEL_PULS_MS};
+Stellmotor weiche = {WEICHE_A, WEICHE_B, "Weiche", true, 0, false, &WEICHE_PWM, &WEICHE_PULS_MS, &WEICHE_UMKEHREN};
+Stellmotor hebel  = {HEBEL_A,  HEBEL_B,  "Hebel",  true, 0, false, &HEBEL_PWM,  &HEBEL_PULS_MS,  &HEBEL_UMKEHREN};
 
 void umschalten(Stellmotor& m) {
   if (m.aktiv) return;                 // laeuft noch
   m.stellung1 = !m.stellung1;
-  motor(m.pinA, m.pinB, m.stellung1 ? m.pwm : -m.pwm);
+  int p = (m.stellung1 != (*m.umk != 0)) ? *m.pwm : -*m.pwm;
+  motor(m.pinA, m.pinB, p);
   m.start = millis();
   m.aktiv = true;
   Serial.print(m.name);
@@ -94,7 +113,7 @@ void umschalten(Stellmotor& m) {
 }
 
 void stellUpdate(Stellmotor& m) {
-  if (m.aktiv && millis() - m.start >= m.pulsMs) {
+  if (m.aktiv && millis() - m.start >= (unsigned long)*m.pulsMs) {
     motor(m.pinA, m.pinB, 0);
     m.aktiv = false;
   }
@@ -157,8 +176,8 @@ void freigeben() {
 
 void stoppUpdate() {
   unsigned long dt = millis() - stoppZeit;
-  if (stoppOffen && dt >= STOPP_OFFEN_MS) setStopp(false);          // immer: nur kurz offen
-  else if (STOPP_AUTOMATIK && aufzugAn && !stoppOffen && dt >= STOPP_INTERVALL_MS) setStopp(true);
+  if (stoppOffen && dt >= (unsigned long)STOPP_OFFEN_MS) setStopp(false);          // immer: nur kurz offen
+  else if (STOPP_AUTOMATIK && aufzugAn && !stoppOffen && dt >= (unsigned long)STOPP_INTERVALL_MS) setStopp(true);
 }
 
 void status() {
@@ -193,9 +212,9 @@ void scanAnalog() {
 // Servo-Test ('v'): langsam ganz auf und zu fahren, damit man sieht, ob er ueberhaupt reagiert
 void servoTest() {
   Serial.println("Servo-Test an D2 und D3: 0 -> 180 -> Ruhestellung");
-  for (int w = 0; w <= 180; w += 5) { servoWinkel(w); delay(25); }
+  for (int w = 0; w <= 180; w += 5) { servoSchreiben(w); delay(25); }
   delay(400);
-  for (int w = 180; w >= 0; w -= 5) { servoWinkel(w); delay(25); }
+  for (int w = 180; w >= 0; w -= 5) { servoSchreiben(w); delay(25); }
   delay(400);
   servoWinkel(stoppOffen ? STOPP_AUF : STOPP_ZU);
   Serial.println("Servo-Test fertig. Nichts bewegt? Stecker drehen (Signal an ~2) und 9V-Netzteil pruefen.");
@@ -252,6 +271,7 @@ void setup() {
   Serial.println("x=alles stoppen t=Taster m=Taster live p=alle Analogpins ?=Status");
 
   webSetup();
+  einstLaden();   // gespeicherte Einstellungen aus dem Flash (braucht den in webSetup eingebundenen Speicher)
 }
 
 void loop() {
@@ -264,6 +284,7 @@ void loop() {
   stellUpdate(weiche);
   stellUpdate(hebel);
   stoppUpdate();
+  servoUpdate();
   ledUpdate();
 
   if (live && millis() - liveZeit >= 300) { liveZeit = millis(); tasterRoh(); }

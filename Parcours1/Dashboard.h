@@ -54,6 +54,28 @@ body.amp-r h1{background-image:linear-gradient(180deg,#ff6b61 20%,#c8000c)}
 #sub{margin-top:10px;max-width:400px;color:var(--muted);font-size:15px;pointer-events:none}
 .pill{height:38px;padding:0 15px;border-radius:19px;background:rgba(28,28,31,.72);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid var(--line);display:inline-flex;align-items:center;gap:9px;font:600 13px var(--sans);transition:background .2s}
 .pill:hover{background:var(--tile2)}
+.pills{display:flex;gap:8px}
+/* Einstellen */
+.act{background:var(--tile);border-radius:18px;padding:16px;margin-bottom:10px}
+.act header{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px}
+.act header b{font:700 17px var(--sans);letter-spacing:-.01em}
+.act header small{display:block;font:12px var(--sans);color:var(--muted);margin-top:2px}
+.act header button{height:34px;padding:0 14px;border-radius:11px;background:var(--ink);color:#111;font:650 12px var(--sans);flex:none}
+.act header button:active{transform:scale(.96)}
+.rng{padding:12px 0 4px}
+.rng label{display:flex;justify-content:space-between;font:13px var(--sans);color:var(--muted);margin-bottom:8px}
+.rng label output{font:600 13px var(--mono);color:var(--ink)}
+.rng label output.chg::after{content:" ●";color:var(--amb)}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:28px;background:none;cursor:pointer;touch-action:pan-y}
+input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:linear-gradient(90deg,var(--ink) var(--p,50%),var(--tile2) var(--p,50%))}
+input[type=range]::-moz-range-track{height:6px;border-radius:3px;background:linear-gradient(90deg,var(--ink) var(--p,50%),var(--tile2) var(--p,50%))}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;margin-top:-9px;border-radius:50%;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.5)}
+input[type=range]::-moz-range-thumb{width:24px;height:24px;border:0;border-radius:50%;background:#fff}
+.tg{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0 2px;font:13px var(--sans);color:var(--muted)}
+.tg .sw{flex:none;width:52px;height:32px;border-radius:16px}.tg .sw::after{width:24px;height:24px}.tg .sw.on::after{transform:translateX(20px)}
+.tg .sw.on{background:var(--ink);box-shadow:none}.tg .sw.on::after{background:#111}
+.arc{display:block;width:100%;height:96px;margin:8px 0 0}
+.saved{font:12px var(--sans);color:var(--muted);margin:-8px 0 16px}
 .pill u{width:7px;height:7px;border-radius:50%;background:var(--red);display:none}
 .pill.alert u{display:block}
 .view{position:absolute;right:28px;bottom:22px;z-index:3;display:flex;padding:3px;border-radius:19px;background:rgba(28,28,31,.72);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid var(--line)}
@@ -111,16 +133,16 @@ body.run .go{background:linear-gradient(160deg,#fff,#d9d9d4);color:#111;box-shad
 
 /* ---------- Systemansicht ---------- */
 #shade{position:fixed;inset:0;z-index:9;background:rgba(0,0,0,.5);opacity:0;visibility:hidden;transition:opacity .35s,visibility .35s}
-#sys{position:fixed;z-index:10;top:0;right:0;bottom:0;width:min(440px,100%);background:var(--panel);border-left:1px solid var(--line);transform:translateX(102%);transition:transform .55s var(--ease);overflow:auto;-webkit-overflow-scrolling:touch;padding:22px 22px calc(30px + env(safe-area-inset-bottom));user-select:text;-webkit-user-select:text}
-body.sys #sys{transform:none}
+#sys,#cfg{position:fixed;z-index:10;top:0;right:0;bottom:0;width:min(440px,100%);background:var(--panel);border-left:1px solid var(--line);transform:translateX(102%);transition:transform .55s var(--ease);overflow:auto;-webkit-overflow-scrolling:touch;padding:22px 22px calc(30px + env(safe-area-inset-bottom));user-select:text;-webkit-user-select:text}
+body.sys #sys,body.cfg #cfg{transform:none}
 #stopbar{display:none;align-items:center;gap:14px;margin-top:16px;pointer-events:auto;padding:10px 12px 10px 16px;border-radius:16px;background:rgba(255,59,48,.14);border:1px solid rgba(255,59,48,.45);max-width:420px;font:600 14px var(--sans)}
 body.amp-r #stopbar{display:flex}
 #stopbar button{margin-left:auto;height:34px;padding:0 14px;border-radius:11px;background:#ff3b30;color:#fff;font:650 13px var(--sans)}
-body.sys #shade{opacity:1;visibility:visible}
+body.sys #shade,body.cfg #shade{opacity:1;visibility:visible}
 .sh{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
 .sh h2{font:750 26px var(--sans);letter-spacing:-.03em}
 .sh button{width:38px;height:38px;border-radius:50%;background:var(--tile);font-size:20px;line-height:1}
-#sys h3{margin:26px 0 10px}
+#sys h3,#cfg h3{margin:26px 0 10px}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .card{background:var(--tile);border-radius:16px;padding:14px}
 .card .v{font:700 24px/1.15 var(--sans);letter-spacing:-.02em;margin-top:8px;font-variant-numeric:tabular-nums}
@@ -189,7 +211,7 @@ kbd{font:600 11px var(--mono);background:var(--tile);border:1px solid var(--line
    <p id="sub">Verbinde mit dem Giga …</p>
    <div id="stopbar"><span id="stopwhy">Not-Aus aktiv</span><button data-c="a">Freigeben & starten</button></div>
   </div>
-  <button class="pill" id="sysbtn"><u></u>System</button>
+  <div class="pills"><button class="pill" id="cfgbtn">Einstellen</button><button class="pill" id="sysbtn"><u></u>System</button></div>
  </div>
  <button class="hs" id="hs_a" data-c="a"><i></i><span><b>Aufzug</b><em></em></span></button>
  <button class="hs" id="hs_s" data-c="s"><i></i><span><b>Stoppstelle</b><em></em></span></button>
@@ -210,6 +232,24 @@ kbd{font:600 11px var(--mono);background:var(--tile);border:1px solid var(--line
 </div>
 
 <div id="shade"></div>
+<aside id="cfg">
+ <div class="sh"><h2>Einstellen</h2><button id="cfgx" aria-label="Schließen">×</button></div>
+ <p class="saved" id="cfg_s">Lade Werte vom Giga …</p>
+ <div id="cfg_l"></div>
+ <h3 class="lbl">Statuslampe oben · Test</h3>
+ <div class="act"><p class="keys" style="line-height:1.5">RGB-Modul: R an A0 oder D18, G an A1 oder D19, B an A2, „–“ an GND. „Auto“ zeigt den Zustand der Anlage.</p>
+  <div class="lamp" id="lamp">
+   <button data-f="a"><i></i>Auto</button>
+   <button data-f="g" style="--c:#3ddc84"><i></i>Grün</button>
+   <button data-f="o" style="--c:#ff9f0a"><i></i>Orange</button>
+   <button data-f="r" style="--c:#ff3b30"><i></i>Rot</button>
+   <button data-f="b" style="--c:#3a8bff"><i></i>Blau</button>
+   <button data-f="w" style="--c:#fff"><i></i>Weiß</button>
+   <button data-f="0"><i></i>Aus</button>
+  </div>
+ </div>
+ <button class="btn wide" id="cfg_r" style="margin-top:14px"><span>Alles auf Startwerte zurücksetzen</span></button>
+</aside>
 <aside id="sys">
  <div class="sh"><h2>System</h2><button id="sysx" aria-label="Schließen">×</button></div>
  <div class="grid">
@@ -233,22 +273,6 @@ kbd{font:600 11px var(--mono);background:var(--tile);border:1px solid var(--line
   <details><summary>Von eigener Adresse laden</summary><input id="url" spellcheck="false" autocomplete="off"><button class="btn wide" id="urlbtn"><span>Update starten</span></button></details>
  </div>
 
- <h3 class="lbl">Statuslampe oben · Test</h3>
- <div class="card"><p class="keys" style="line-height:1.5">RGB-Modul: R an A0 oder D18, G an A1 oder D19, B an A2, „–“ an GND. „Auto“ zeigt den Zustand der Anlage.</p>
-  <div class="lamp" id="lamp">
-   <button data-f="a"><i></i>Auto</button>
-   <button data-f="g" style="--c:#3ddc84"><i></i>Grün</button>
-   <button data-f="o" style="--c:#ff9f0a"><i></i>Orange</button>
-   <button data-f="r" style="--c:#ff3b30"><i></i>Rot</button>
-   <button data-f="b" style="--c:#3a8bff"><i></i>Blau</button>
-   <button data-f="w" style="--c:#fff"><i></i>Weiß</button>
-   <button data-f="0"><i></i>Aus</button>
-  </div>
- </div>
-
- <h3 class="lbl">Stoppstelle</h3>
- <div class="card"><p class="keys" style="line-height:1.5">Fährt den Servo einmal ganz auf und zu (an SERVO 1 und SERVO 2). Bewegt sich nichts: Stecker drehen, Signal muss an ~2.</p><button class="btn wide" data-c="v"><span>Servo testen</span></button></div>
-
  <h3 class="lbl">Verlauf · letzte 2 Minuten</h3>
  <div class="card" style="padding:6px 0"><canvas id="scope"></canvas></div>
 
@@ -256,7 +280,7 @@ kbd{font:600 11px var(--mono);background:var(--tile);border:1px solid var(--line
  <div class="card"><div class="log" id="log"></div></div>
 
  <h3 class="lbl">Tastatur</h3>
- <p class="keys"><kbd>Leertaste</kbd>Start / Stopp<br><kbd>S</kbd>Kugel freigeben <kbd>W</kbd>Weiche 1 <kbd>H</kbd>Weiche 2<br><kbd>L</kbd>Licht <kbd>F</kbd>Kugel folgen <kbd>X</kbd>Not-Aus</p>
+ <p class="keys"><kbd>Leertaste</kbd>Start / Stopp<br><kbd>S</kbd>Kugel freigeben <kbd>W</kbd>Weiche 1 <kbd>H</kbd>Weiche 2<br><kbd>L</kbd>Licht <kbd>F</kbd>Kugel folgen <kbd>X</kbd>Not-Aus <kbd>E</kbd>Einstellen</p>
 </aside>
 <div id="toast"></div>
 
@@ -374,14 +398,83 @@ document.querySelectorAll('.seg').forEach(g=>g.addEventListener('click',e=>{cons
 document.querySelectorAll('.tile[data-k]').forEach(t=>{const h=$('hs_'+t.dataset.k);t.onpointerenter=()=>h.classList.add('hot');t.onpointerleave=()=>h.classList.remove('hot');h.onpointerenter=()=>t.classList.add('hot');h.onpointerleave=()=>t.classList.remove('hot');});
 function view(v){P1.view=v;[...$('view').children].forEach(b=>b.classList.toggle('on',b.dataset.v===v));}
 $('view').onclick=e=>{const b=e.target.closest('button');if(b)view(b.dataset.v);};
-function sys(on){B.classList.toggle('sys',on);if(on){sSize();sDraw(performance.now());}}
-$('sysbtn').onclick=()=>sys(true);$('sysx').onclick=$('shade').onclick=()=>sys(false);
+function sys(on){B.classList.toggle('sys',on);B.classList.remove('cfg');if(on){sSize();sDraw(performance.now());}}
+function cfgOpen(on){B.classList.toggle('cfg',on);B.classList.remove('sys');if(on)cfgLoad();}
+$('sysbtn').onclick=()=>sys(true);$('cfgbtn').onclick=()=>cfgOpen(true);
+$('sysx').onclick=$('cfgx').onclick=$('shade').onclick=()=>{sys(false);cfgOpen(false);};
+
+/* ---------- Einstellen: jeder Aktor mit Reglern und Test ---------- */
+const pct=v=>Math.round(v/2.55)+' %',ms=v=>v+' ms',deg=v=>v+'°',sec=v=>(v/1000).toFixed(1)+' s';
+const ACT=[
+ {t:'Kettenaufzug',d:'XS-Motor an M2',test:['a','Start / Stopp'],p:[
+   ['aufzug_pwm','Geschwindigkeit',0,255,5,pct],['aufzug_umk','Richtung umkehren']]},
+ {t:'Weiche 1',d:'Flexschiene · XS-Motor an M3',test:['w','Umschalten'],p:[
+   ['weiche_pwm','Kraft',0,255,5,pct],['weiche_ms','Stellweg (Fahrzeit bis Anschlag)',20,2000,10,ms],['weiche_umk','Richtung umkehren']]},
+ {t:'Weiche 2',d:'Weichenhebel · XS-Motor an M4',test:['h','Umschalten'],p:[
+   ['hebel_pwm','Kraft',0,255,5,pct],['hebel_ms','Stellweg (Fahrzeit bis Anschlag)',20,2000,10,ms],['hebel_umk','Richtung umkehren']]},
+ {t:'Stoppstelle',d:'Servo an SERVO 1 (D2)',test:['s','Freigeben'],extra:['v','Servo-Test'],arc:1,p:[
+   ['stopp_zu','Winkel geschlossen',0,180,1,deg],['stopp_auf','Winkel offen',0,180,1,deg],
+   ['stopp_ms','Offen für',30,1500,10,ms],['stopp_tempo','Tempo',0,30,1,v=>v?v*100+' °/s':'maximal'],
+   ['stopp_auto','Automatisch freigeben, wenn der Aufzug läuft'],['stopp_takt','Abstand der Freigaben',1000,30000,500,sec]]},
+ {t:'Licht',d:'Rainbow-LEDs an M1',test:['l','An / Aus'],p:[['led_blink','Status als Blinkcode zeigen']]}
+];
+function cfgBuild(){
+  const L=$('cfg_l');L.innerHTML='';
+  ACT.forEach(a=>{
+    const el=document.createElement('section');el.className='act';
+    el.innerHTML='<header><div><b></b><small></small></div><span style="display:flex;gap:6px"></span></header>';
+    el.querySelector('b').textContent=a.t;el.querySelector('small').textContent=a.d;
+    const bs=el.querySelector('header span');
+    if(a.extra){const b=document.createElement('button');b.textContent=a.extra[1];b.style.cssText='background:var(--tile2);color:var(--ink)';b.onclick=()=>cmd(a.extra[0]);bs.append(b);}
+    {const b=document.createElement('button');b.textContent=a.test[1];b.onclick=()=>cmd(a.test[0]);bs.append(b);}
+    if(a.arc){const c=document.createElement('canvas');c.className='arc';c.id='arc';el.append(c);}
+    a.p.forEach(([k,n,mi,ma,st,f])=>{
+      if(mi===undefined){
+        const r=document.createElement('div');r.className='tg';r.innerHTML='<span></span><button class="sw"></button>';
+        r.firstChild.textContent=n;const b=r.lastChild;b.dataset.k=k;b.setAttribute('aria-label',n);
+        b.onclick=()=>cfgSet(k,b.classList.contains('on')?0:1);el.append(r);return;}
+      const r=document.createElement('div');r.className='rng';
+      r.innerHTML='<label><span></span><output></output></label><input type="range">';
+      r.querySelector('span').textContent=n;const i=r.querySelector('input'),o=r.querySelector('output');
+      Object.assign(i,{min:mi,max:ma,step:st});i.dataset.k=k;i._o=o;
+      i._show=()=>{o.textContent=f(+i.value);i.style.setProperty('--p',((i.value-mi)/(ma-mi)*100)+'%');if(a.arc)arcDraw();};
+      i.oninput=i._show;i.onchange=()=>cfgSet(k,+i.value);el.append(r);
+    });
+    L.append(el);
+  });
+}
+function cfgFill(j){
+  let chg=0;
+  document.querySelectorAll('#cfg_l [data-k]').forEach(e=>{const v=j[e.dataset.k];if(!v)return;const c=v[0]!==v[1];chg+=c;
+    if(e.tagName==='INPUT'){if(document.activeElement!==e)e.value=v[0];e._show();e._o.classList.toggle('chg',c);}
+    else e.classList.toggle('on',!!v[0]);});
+  $('cfg_s').textContent=(j.gespeichert?'Änderungen gelten sofort und bleiben auf dem Giga gespeichert, auch nach Neustart und Update.':'Achtung: Speicher nicht verfügbar, Werte gelten nur bis zum Neustart.')+(chg?' '+chg+' Wert'+(chg>1?'e':'')+' geändert (●).':'');
+}
+async function cfgGet(q){try{cfgFill(await (await fetch('/einst'+q,{cache:'no-store'})).json());return true;}catch(e){toast('Giga nicht erreichbar');return false;}}
+function cfgLoad(){if(!$('cfg_l').children.length)cfgBuild();cfgGet('');}
+async function cfgSet(k,v){if(await cfgGet('?k='+k+'&v='+v)&&navigator.vibrate)navigator.vibrate(6);}
+$('cfg_r').onclick=async()=>{if(await cfgGet('?reset=1'))toast('Startwerte wiederhergestellt');};
+/* Servo-Winkel als Bogen: grau = geschlossen, Statusfarbe = offen */
+function arcDraw(){
+  const c=$('arc');if(!c)return;const d=DPR(),w=c.clientWidth,h=c.clientHeight;if(!w)return;c.width=w*d;c.height=h*d;const g=c.getContext('2d');g.scale(d,d);
+  const val=k=>{const e=document.querySelector('#cfg_l input[data-k="'+k+'"]');return e?+e.value:0;};
+  const cx=w/2,cy=h-8,R=Math.min(h-22,w/2-30),A=x=>Math.PI+x/180*Math.PI;
+  g.lineWidth=2;g.strokeStyle='rgba(255,255,255,.12)';g.beginPath();g.arc(cx,cy,R,Math.PI,2*Math.PI);g.stroke();
+  const z=val('stopp_zu'),o=val('stopp_auf');
+  g.strokeStyle='rgba(255,255,255,.3)';g.lineWidth=6;g.beginPath();g.arc(cx,cy,R,A(Math.min(z,o)),A(Math.max(z,o)));g.stroke();
+  [[z,'#9c9c97','zu'],[o,getComputedStyle(B).getPropertyValue('--amb').trim(),'auf']].forEach(([v,col,n])=>{
+    const x=Math.cos(A(v)),y=Math.sin(A(v));
+    g.strokeStyle=col;g.lineWidth=4;g.lineCap='round';g.beginPath();g.moveTo(cx,cy);g.lineTo(cx+x*R,cy+y*R);g.stroke();
+    g.fillStyle=col;g.font='600 11px '+MONO;g.textAlign='center';g.fillText(n,cx+x*(R+14),cy+y*(R+14)+4);});
+  g.fillStyle='#fff';g.beginPath();g.arc(cx,cy,5,0,7);g.fill();
+}
 addEventListener('keydown',e=>{
-  if(e.key==='Escape')return sys(false);
+  if(e.key==='Escape'){sys(false);return cfgOpen(false);}
   if(e.target.tagName==='INPUT'||e.metaKey||e.ctrlKey||e.altKey||e.repeat)return;
   const k=e.key.toLowerCase();
   if(k===' '){e.preventDefault();cmd('a');}
   else if(k==='f')view(P1.view==='f'?'o':'f');
+  else if(k==='e')cfgOpen(!B.classList.contains('cfg'));
   else if(k.length===1&&'awhslx'.includes(k))cmd(k);
 });
 $('lamp').onclick=async e=>{const b=e.target.closest('button');if(!b)return;try{render(await get('/lampe?f='+b.dataset.f));}catch(x){toast('Giga nicht erreichbar');}};

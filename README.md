@@ -14,7 +14,11 @@ Ob der Build durchging: Tab **Actions** im Repo. Ist er rot, bleibt der Giga auf
 
 - **Weboberfläche:** Laptop/Handy in den Hotspot „iPhone von mir“, dann die IP aus dem seriellen Monitor im Browser öffnen (bisher `http://172.20.10.2`). Mehrere Geräte gleichzeitig gehen.
 - **Taster:** Mitte (A4) = Aufzug an/aus, links (A5) = Stellweiche, rechts (A3) = Weichenhebel. Beim Einschalten nicht drücken.
-- **Serieller Monitor** (115200 Baud, `./monitor.command`): `a` Aufzug, `w` Weiche, `h` Hebel, `s` Stoppstelle, `l` LEDs, `x` alles stoppen, `v` Servo-Test, `s` gibt eine Kugel frei (Stoppstelle 300 ms auf, dann zu), `?` Status, `t`/`m` Taster, `n` WLANs anzeigen, `g` GitHub-Verbindung testen, `u` Update von GitHub sofort laden.
+- **Serieller Monitor** (115200 Baud, `./monitor.command`): `a` Aufzug, `w` Weiche, `h` Hebel, `s` Stoppstelle, `l` LEDs, `x` alles stoppen, `v` Servo-Test, `s` gibt eine Kugel frei (Stoppstelle kurz auf, dann zu), `?` Status, `t`/`m` Taster, `n` WLANs anzeigen, `g` GitHub-Verbindung testen, `u` Update von GitHub sofort laden.
+
+## Aktoren einstellen
+
+Im Dashboard oben rechts **Einstellen**: Geschwindigkeit des Aufzugs, Kraft und Stellweg beider Weichen, Winkel, Offen-Zeit, Tempo und Takt der Stoppstelle, Richtung umkehren, Blinkcode. Jeder Aktor hat einen Test-Knopf. Werte gelten sofort und werden auf dem Giga in `/fs/einst.txt` gespeichert (bleiben auch nach Neustart und Update). „Alles auf Startwerte zurücksetzen“ nimmt wieder die Werte aus dem Block *Kalibrierung* in `Parcours1.ino`.
 
 ## Dashboard bearbeiten
 

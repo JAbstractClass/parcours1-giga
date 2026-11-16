@@ -7,8 +7,16 @@ struct Stellmotor {
   bool stellung1;
   unsigned long start;
   bool aktiv;
-  int pwm;                 // Kraft 0..255
-  unsigned long pulsMs;    // Fahrzeit bis Anschlag
+  int* pwm;                // Kraft 0..255 (zeigt auf die Einstellung)
+  int* pulsMs;             // Fahrzeit bis Anschlag
+  int* umk;                // 1 = Richtung umkehren
+};
+
+// eine im Dashboard einstellbare Groesse
+struct Param {
+  const char* key;
+  int* wert;
+  int min, max, def;
 };
 
 // Taster: Ruhezustand wird beim Start gemessen, gedrueckt = Abweichung davon

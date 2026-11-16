@@ -315,6 +315,12 @@ void webLoop() {
     String cm = param(pfad, "c");
     if (cm.length() == 1 && strchr("awhslxv", cm[0])) befehl(cm[0]);
     antwort(c, "application/json", statusJson());
+  } else if (pfad.startsWith("/einst")) {
+    // /einst -> alle Werte, /einst?k=weiche_ms&v=800 -> setzen, /einst?reset=1 -> Startwerte
+    if (param(pfad, "reset") == "1") einstZuruecksetzen();
+    String k = param(pfad, "k");
+    if (k.length() && einstSetzen(k, param(pfad, "v").toInt())) { einstAnwenden(); einstSpeichern(); }
+    antwort(c, "application/json", einstJson());
   } else if (pfad.startsWith("/lampe")) {
     String f = param(pfad, "f");
     if (f.length() == 1 && strchr("agorbw0", f[0])) { lampeModus = f[0]; ledUpdate(); }

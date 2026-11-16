@@ -10,6 +10,11 @@ from urllib.parse import urlparse, parse_qs
 HTML = os.path.join(os.path.dirname(__file__), "..", "Parcours1", "dashboard.html")
 GIGA = sys.argv[1] if len(sys.argv) > 1 else ""
 START = time.time()
+E = {"aufzug_pwm": 200, "aufzug_umk": 0, "weiche_pwm": 255, "weiche_ms": 750, "weiche_umk": 0, "hebel_pwm": 180,
+     "hebel_ms": 350, "hebel_umk": 0, "stopp_zu": 60, "stopp_auf": 120, "stopp_ms": 180, "stopp_tempo": 0,
+     "stopp_auto": 1, "stopp_takt": 8000, "led_blink": 1}
+E0 = dict(E)
+def einst(): return json.dumps({**{k: [v, E0[k]] for k, v in E.items()}, "gespeichert": True})
 S = {"aufzug": False, "leds": True, "stopp": False, "weiche": 1, "hebel": 1,
      "version": "abc1234", "ip": "127.0.0.1", "datum": "Vorschau", "rssi": -58,
      "github": "abc1234", "auto": True, "ota": "", "ampel": "g", "notaus": False, "grund": "", "lampe": "a"}
@@ -50,6 +55,11 @@ class H(BaseHTTPRequestHandler):
             elif c == "v": pass
             elif c == "x": S.update(aufzug=False, stopp=False, notaus=True, ampel="r", grund="Not-Aus")
             return self.send(json.dumps(status()))
+        if u.path == "/einst":
+            q = parse_qs(u.query)
+            if q.get("reset"): E.update(E0)
+            if q.get("k") and q["k"][0] in E: E[q["k"][0]] = int(q.get("v", ["0"])[0])
+            return self.send(einst())
         if u.path == "/lampe":
             S["lampe"] = parse_qs(u.query).get("f", ["a"])[0]; return self.send(json.dumps(status()))
         if u.path in ("/github", "/update"):
