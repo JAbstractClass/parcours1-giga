@@ -17,7 +17,7 @@ E0 = dict(E)
 def einst(): return json.dumps({**{k: [v, E0[k]] for k, v in E.items()}, "gespeichert": True})
 S = {"aufzug": False, "leds": True, "stopp": False, "weiche": 1, "hebel": 1,
      "version": "abc1234", "ip": "127.0.0.1", "datum": "Vorschau", "rssi": -58,
-     "github": "abc1234", "auto": True, "ota": "", "ampel": "g", "notaus": False, "grund": "", "lampe": "a", "kugel": True, "kugeln": 0, "sensor": True, "pegel": "A6=1 D14=0 D15=1", "weihnacht": False, "lied": 0}
+     "github": "abc1234", "auto": True, "ota": "", "ampel": "g", "notaus": False, "grund": "", "lampe": "a", "kugel": True, "kugeln": 0, "sensor": True, "pegel": "P15=1", "weihnacht": False, "lied": 0}
 
 def status():
     if S.get("_zu") and time.time() > S["_zu"]: S["stopp"] = False; S.pop("_zu")

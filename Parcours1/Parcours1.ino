@@ -42,11 +42,10 @@ const int RGB_G[] = {A1, 19};
 const int RGB_B[] = {A2};
 
 // Kugelsensor an der Stoppstelle: IR-Reflexsensor (Sensorkit B04), Versorgung 3,3 V (nie 5 V!).
-// DOUT darf an IN A6 oder an die 8er-Stiftleiste (NRF24L01-Platz: D14/D15) - alle drei werden gelesen,
-// "Kugel" = irgendeiner davon ist LOW. Unbelegte Eingaenge liegen per Pull-up auf HIGH.
-const int SENSOR_PINS[] = {A6, 14, 15};
-const char* SENSOR_NAMEN[] = {"A6", "D14", "D15"};
-const int N_SENSOR = 3;
+// DOUT an Pin P15 der 8er-Stiftleiste unten (= D15), "Kugel" = LOW.
+const int SENSOR_PINS[] = {15};
+const char* SENSOR_NAMEN[] = {"P15"};
+const int N_SENSOR = 1;
 // Lautsprecher (2 Pins) an M6 (D12/D13) ueber den Motortreiber, mit ca. 100 Ohm Vorwiderstand.
 // D13 liefert das Audiosignal als schnelle PWM (eigener Timer TIM12; D10 an M5 teilt sich TIM1 mit dem Aufzug).
 const int LAUTSPR_A = 13;      // PWM
