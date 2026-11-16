@@ -211,10 +211,11 @@ void sensorUpdate() {
   }
 }
 
-// Eine Kugel freigeben: kurz auf, stoppUpdate macht wieder zu. Mit Sensor nur, wenn eine Kugel wartet.
-bool freigeben() {
+// Eine Kugel freigeben: kurz auf, stoppUpdate macht wieder zu.
+// Automatik (manuell = false): nur, wenn der Sensor eine Kugel sieht. Von Hand (Dashboard, 's'): immer.
+bool freigeben(bool manuell) {
   if (stoppOffen) return true;
-  if (SENSOR_AN && !kugelDa) { Serial.println("Stoppstelle: keine Kugel da"); return false; }
+  if (!manuell && SENSOR_AN && !kugelDa) return false;
   if (!SENSOR_AN) kugelZaehler++;                 // ohne Sensor: Freigaben zaehlen
   setStopp(true);
   return true;
@@ -227,7 +228,7 @@ void stoppUpdate() {
     bool durch = SENSOR_AN && !kugelDa && kugelWeg > stoppZeit && millis() - kugelWeg >= (unsigned long)STOPP_NACHLAUF_MS;
     if (durch || dt >= (unsigned long)STOPP_OFFEN_MS) setStopp(false);
   } else if (STOPP_AUTOMATIK && aufzugAn && dt >= (unsigned long)STOPP_INTERVALL_MS) {
-    if (!freigeben()) stoppZeit = millis() - STOPP_INTERVALL_MS + 300;   // keine Kugel: gleich nochmal schauen
+    if (!freigeben(false)) stoppZeit = millis() - STOPP_INTERVALL_MS + 300;   // keine Kugel: gleich nochmal schauen
   }
 }
 
@@ -382,7 +383,7 @@ bool befehl(char c) {
     case 'a': setAufzug(!aufzugAn); return true;
     case 'w': umschalten(weiche);   return true;
     case 'h': umschalten(hebel);    return true;
-    case 's': freigeben();          return true;
+    case 's': freigeben(true);      return true;
     case 'l': setLeds(!ledsAn);     return true;
     case 'x': allesStopp(); notAus = true; Serial.println("NOT-AUS"); return true;
     case 't': tasterRoh();          return true;

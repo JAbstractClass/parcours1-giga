@@ -22,7 +22,7 @@ Im Dashboard oben rechts **Einstellen**: Geschwindigkeit des Aufzugs, Kraft und 
 
 ## Kugelsensor und Weihnachtsmodus
 
-- Der Sensor schaut auf die Kugel, die vor der geschlossenen Stoppstelle wartet. Die Stoppstelle öffnet nur, wenn er eine Kugel sieht, und schließt, sobald sie durchgerollt ist. Jede durchgerollte Kugel erhöht den Zähler („Kugeln durch“). Empfindlichkeit am Poti des Moduls einstellen. Ohne Sensor: unter Einstellen → Stoppstelle „Nur freigeben, wenn der Sensor eine Kugel sieht“ ausschalten.
+- Der Sensor schaut auf die Kugel, die vor der geschlossenen Stoppstelle wartet. Die Automatik öffnet die Stoppstelle nur, wenn er eine Kugel sieht, und schließt, sobald sie durchgerollt ist. Von Hand (Dashboard, Taste `s`) öffnet sie immer. Jede durchgerollte Kugel erhöht den Zähler („Kugeln durch“). Empfindlichkeit am Poti des Moduls einstellen. Ohne Sensor: unter Einstellen → Stoppstelle „Nur freigeben, wenn der Sensor eine Kugel sieht“ ausschalten.
 - Weihnachtsmodus: Im Dashboard ein Lied (MP3) hochladen. Der Browser wandelt es in 8 kHz/8 Bit um und schickt es in den Flash des Giga (`/fs/lied.raw`). Das Lied liegt **nicht** im Repo. Lautstärke unter Einstellen → Lautsprecher.
 
 ## Dashboard bearbeiten

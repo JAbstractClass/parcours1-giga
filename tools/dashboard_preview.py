@@ -55,7 +55,7 @@ class H(BaseHTTPRequestHandler):
             if c == "a": S["aufzug"] = not S["aufzug"]; S.update(notaus=False, ampel="g", grund="")
             elif c == "w": S["weiche"] = 3 - S["weiche"]
             elif c == "h": S["hebel"] = 3 - S["hebel"]
-            elif c == "s" and S["kugel"]: S["stopp"] = True; S["_zu"] = time.time() + .3; S["kugeln"] += 1
+            elif c == "s": S["stopp"] = True; S["_zu"] = time.time() + .3; S["kugeln"] += 1
             elif c == "l": S["leds"] = not S["leds"]
             elif c == "v": pass
             elif c == "j": S["weihnacht"] = not S["weihnacht"] and S["lied"] > 0
