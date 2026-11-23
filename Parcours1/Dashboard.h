@@ -316,6 +316,7 @@ body.xmas #stage{background:radial-gradient(90% 70% at 50% 40%,#18233a,var(--bg)
    <button class="row" id="z_k" data-go="cfg"><span class="ic"><svg class="i"><use href="#i-eye"/></svg></span><span class="tx"><b>Kugelsensor</b><small>–</small></span><svg class="i"><use href="#i-chev"/></svg></button>
    <button class="row" id="z_l" data-go="cfg"><span class="ic"><svg class="i"><use href="#i-bulb"/></svg></span><span class="tx"><b>Licht</b><small>–</small></span><svg class="i"><use href="#i-chev"/></svg></button>
    <button class="row" id="z_c" data-go="sys"><span class="ic"><svg class="i"><use href="#i-wifi"/></svg></span><span class="tx"><b>Verbindung</b><small>–</small></span><svg class="i"><use href="#i-chev"/></svg></button>
+   <button class="row" id="z_m" data-go="sys"><span class="ic"><svg class="i"><use href="#i-chip"/></svg></span><span class="tx"><b>M5Stack-Panel</b><small>–</small></span><svg class="i"><use href="#i-chev"/></svg></button>
    <button class="row" id="z_f" data-go="sys"><span class="ic"><svg class="i"><use href="#i-chip"/></svg></span><span class="tx"><b>Software</b><small>–</small></span><svg class="i"><use href="#i-chev"/></svg></button>
   </div>
 
@@ -431,7 +432,7 @@ const ROUTE=s=>[s.weiche===2?'am Looping vorbei':'durch den Looping',s.hebel===2
 function render(s){
   const p=P1.S;P1.S=s;
   const amp=s.ampel||'g';B.classList.toggle('amp-o',amp==='o');B.classList.toggle('amp-r',amp==='r');P1.amp=amp;
-  $('al_t').textContent=s.notaus?'Not-Aus aktiv':'Fehler';$('al_s').textContent=s.notaus?'Alle Motoren sind aus':(s.grund||'unbekannt');
+  $('al_t').textContent=s.notaus?'Not-Aus aktiv':s.m5==='verloren'?'Verbindung zum M5Stack verloren':s.stau?'Störung: Kugelstau':'Störung';$('al_s').textContent=s.notaus?'Alle Motoren sind aus':(s.grund||'unbekannt');
   B.classList.toggle('run',s.aufzug);
   const r=ROUTE(s);
   if(s.notaus)head('Not-Aus','Alle Motoren aus · zum Freigeben starten');
@@ -449,6 +450,7 @@ function render(s){
   const q=s.rssi>=-55?4:s.rssi>=-67?3:s.rssi>=-75?2:1,ql=['','Schwach','Mittel','Gut','Sehr gut'][q];
   $('k_wl').textContent=ql;[...$('k_bars').children].forEach((e,i)=>e.classList.toggle('on',i<q));
   $('k_wls').textContent=s.rssi+' dBm · Antwort in '+lat+' ms';
+  rowSet('z_m',s.m5==='ok',({ok:'Verbunden über MQTT · synchron',warte:'MQTT verbunden · wartet auf Lebenszeichen',getrennt:'Gefunden, aber nicht verbunden',verloren:'Verbindung verloren · Anlage gestoppt',aus:'Nicht gefunden'})[s.m5]||'–');
   rowSet('z_c',false,'WLAN '+ql.toLowerCase()+' · '+(amp==='o'?'kein Internet':'online')+' · '+lat+' ms');
   if(s.daten!==undefined){const b=s.daten+s.abrufe*7000;$('k_dat').textContent=b<1e6?Math.round(b/1e3)+' KB':(b/1e6).toFixed(1)+' MB';if(s.uptime>60)$('k_dat_s').textContent='≈ '+(b/s.uptime*3.6/1e3).toFixed(1)+' MB pro Stunde';}
   $('f_ver').textContent=s.version;$('f_gh').textContent=s.github||'–';$('f_date').textContent=s.datum;$('f_ip').textContent=s.ip;
@@ -552,7 +554,8 @@ const ACT=[
    ['sensor_empf','Shock: Empfindlichkeit',1,10,1,v=>v===10?'10 · maximal':v+''],['sensor_sperr','Shock: Mindestabstand zwischen zwei Kugeln',10,2000,10,ms],['sensor_inv','Reflex: Signal umkehren'],
    ['stopp_nach','Reflex: nach dem Durchrollen noch offen',0,1000,10,ms]]},
  {t:'Lautsprecher',d:'P15 über 470 Ω oder lauter an M6 über 100 Ω',test:['j','An / Aus'],p:[['laut','Lautstärke',0,100,5,v=>v+' %'],['boost','Verstärkung (lauter, etwas verzerrter)',1,10,1,v=>v===1?'aus':v+'×']]},
- {t:'Licht',d:'Rainbow-LEDs an M1',test:['l','An / Aus'],p:[['led_blink','Status als Blinkcode zeigen']]}
+ {t:'Licht',d:'Rainbow-LEDs an M1',test:['l','An / Aus'],p:[['led_blink','Status als Blinkcode zeigen']]},
+ {t:'Überwachung',d:'Störungen und M5Stack-Verbindung',test:['x','Not-Aus'],p:[['stau_s','Kugelstau melden nach',0,300,5,v=>v?v+' s ohne Kugel':'aus'],['m5_waechter','Anlage stoppen, wenn das M5Stack nicht mehr antwortet']]}
 ];
 let CFG={};
 function cfgBuild(){

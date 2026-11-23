@@ -12,12 +12,12 @@ GIGA = sys.argv[1] if len(sys.argv) > 1 else ""
 START = time.time()
 E = {"aufzug_pwm": 200, "aufzug_umk": 0, "weiche_pwm": 255, "weiche_ms": 750, "weiche_umk": 0, "hebel_pwm": 180,
      "hebel_ms": 350, "hebel_umk": 0, "stopp_zu": 60, "stopp_auf": 120, "stopp_ms": 180, "stopp_tempo": 0,
-     "stopp_auto": 1, "stopp_takt": 8000, "led_blink": 1, "sensor_an": 1, "sensor_inv": 0, "stopp_nach": 120, "laut": 100, "boost": 5, "sensor_typ": 1, "sensor_sperr": 150, "sensor_empf": 10}
+     "stopp_auto": 1, "stopp_takt": 8000, "led_blink": 1, "sensor_an": 1, "sensor_inv": 0, "stopp_nach": 120, "laut": 100, "boost": 5, "sensor_typ": 1, "sensor_sperr": 150, "sensor_empf": 10, "stau_s": 30, "m5_waechter": 1}
 E0 = dict(E)
 def einst(): return json.dumps({**{k: [v, E0[k]] for k, v in E.items()}, "gespeichert": True})
 S = {"aufzug": False, "leds": True, "stopp": False, "weiche": 1, "hebel": 1,
      "version": "abc1234", "ip": "127.0.0.1", "datum": "Vorschau", "rssi": -58,
-     "github": "abc1234", "auto": True, "ota": "", "ampel": "g", "notaus": False, "grund": "", "lampe": "a", "kugel": True, "kugeln": 0, "sensor": True, "pegel": "A6=1", "weihnacht": False, "lied": 0}
+     "github": "abc1234", "auto": True, "ota": "", "ampel": "g", "notaus": False, "grund": "", "lampe": "a", "kugel": True, "kugeln": 0, "sensor": True, "m5": "ok", "stau": False, "pegel": "A6=1", "weihnacht": False, "lied": 0}
 
 def status():
     if S.get("_zu") and time.time() > S["_zu"]: S["stopp"] = False; S.pop("_zu")

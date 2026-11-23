@@ -25,6 +25,19 @@ Im Dashboard oben rechts **Einstellen**: Geschwindigkeit des Aufzugs, Kraft und 
 - Sensorart unter Einstellen → Stoppstelle wählen. **Shock-Sensor:** meldet den Aufprall der ankommenden Kugel (per Interrupt, auch sehr kurze Impulse), zählt sie und merkt sich „Kugel wartet“ bis zur nächsten Freigabe; „Mindestabstand“ blendet das Nachschwingen der Feder aus. **Reflex-Sensor:** Der Sensor schaut auf die Kugel, die vor der geschlossenen Stoppstelle wartet. Die Automatik öffnet die Stoppstelle nur, wenn er eine Kugel sieht, und schließt, sobald sie durchgerollt ist. Von Hand (Dashboard, Taste `s`) öffnet sie immer. Jede durchgerollte Kugel erhöht den Zähler („Kugeln durch“). Empfindlichkeit am Poti des Moduls einstellen. Ohne Sensor: unter Einstellen → Stoppstelle „Nur freigeben, wenn der Sensor eine Kugel sieht“ ausschalten.
 - Weihnachtsmodus: Im Dashboard ein Lied (MP3) hochladen. Der Browser wandelt es in 8 kHz/8 Bit um und schickt es in den Flash des Giga (`/fs/lied.raw`). Das Lied liegt **nicht** im Repo. Lautstärke unter Einstellen → Lautsprecher.
 
+## M5Stack-Bedienpanel
+
+`M5Panel/` läuft auf einem M5Stack Core (3 Tasten). Das M5Stack ist selbst der MQTT-Broker und kündigt sich im Hotspot per UDP an, der Giga verbindet sich von allein, ganz ohne Internet. Webinterface und M5 zeigen denselben Zustand, Befehle von beiden Seiten gehen an den Giga.
+
+- **Tasten Startseite:** A Menü · B Start/Stopp (lang halten = NOT-AUS) · C Kugel freigeben
+- **In Listen:** A Zurück · B Weiter · C OK. **Werte ändern:** A − · B + (halten = schnell) · C Speichern, A lang = abbrechen
+- **Menü:** Status aller Ein-/Ausgänge, Manuell steuern, Betriebsparameter, Messwerte & Statistik, Info
+- **Sicherheit:** Das M5 schickt alle 400 ms ein Lebenszeichen. Bleibt es 2,5 s aus, stoppt der Giga alles (Aufzug aus, Weichen stromlos, Stoppstelle zu) und meldet die Störung, bis die Anlage wieder gestartet wird. Abschaltbar unter Einstellen → Überwachung. Das M5 piept und zeigt eine rote Warnung, wenn es keine Daten mehr vom Giga bekommt.
+- **Kugelstau:** Läuft der Aufzug länger als 30 s (einstellbar), ohne dass eine Kugel ankommt, meldet der Giga eine Störung; das M5 piept.
+- **Aufspielen** (per USB, M5Stack am Laptop): `M5Panel/secrets.example.h` nach `M5Panel/secrets.h` kopieren und WLAN eintragen (nicht im Repo), dann
+  `arduino-cli compile -b esp32:esp32:m5stack_core:FlashSize=16M,PartitionScheme=huge_app M5Panel` und `arduino-cli upload … -p /dev/cu.usbserial-* M5Panel`.
+  Bibliotheken: M5Unified 0.2.2, PicoMQTT 1.3.0, ArduinoJson 7.2.1 (ESP32-Kern 3.0.7).
+
 ## Dashboard bearbeiten
 
 Quelle ist `Parcours1/dashboard.html`. Vorschau ohne Giga (simuliert alle Funktionen):
