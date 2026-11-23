@@ -118,6 +118,8 @@ bool einstSenden = false;       // Einstellungen per MQTT neu an das M5 schicken
 bool stau = false;              // Stoerung: Aufzug laeuft, aber seit STAU_S keine Kugel
 unsigned long letzteKugelT = 0;
 unsigned long laufMs = 0, laufSeit = 0;   // Betriebszeit des Aufzugs seit Neustart
+// Diagnose: laengste Dauer je Teil der Hauptschleife in den letzten 3 s (im Status als "diag")
+unsigned long dWeb = 0, dMqtt = 0, dRest = 0, dWebA = 0, dMqttA = 0, dRestA = 0, dT = 0;
 bool weicheLinks = true, hebelLinks = true;
 unsigned long stoppZeit = 0;
 bool live = false;              // 'm': Tasterwerte laufend ausgeben
@@ -494,7 +496,12 @@ void loop() {
 
   if (live && millis() - liveZeit >= 300) { liveZeit = millis(); tasterRoh(); }
 
+  unsigned long t0 = millis();
   webLoop();
+  unsigned long t1 = millis();
   mqttLoop();
+  unsigned long t2 = millis();
   stauUpdate();
+  dWebA = max(dWebA, t1 - t0); dMqttA = max(dMqttA, t2 - t1);
+  if (millis() - dT > 3000) { dT = millis(); dWeb = dWebA; dMqtt = dMqttA; dRest = dRestA; dWebA = dMqttA = dRestA = 0; }
 }

@@ -241,6 +241,7 @@ String statusJson() {
   s += ",\"sensor\":";    s += SENSOR_AN ? "true" : "false";
   s += ",\"styp\":";      s += SENSOR_TYP;
   s += ",\"stau\":";      s += stau ? "true" : "false";
+  s += ",\"diag\":\"web " + String(dWeb) + " mqtt " + String(dMqtt) + "\"";
   s += ",\"m5\":";        s += m5Status();
   s += ",\"lauf\":";      s += String(laufSekunden());
   s += ",\"taster\":\"";  s += tL.zustand != tL.ruhe ? "1" : "0"; s += tM.zustand != tM.ruhe ? "1" : "0"; s += tR.zustand != tR.ruhe ? "1" : "0";   // 1 = gedrueckt s += "\"";
