@@ -31,79 +31,45 @@ String p1Host() { String u = P1_URL; u.replace("https://", ""); return u.substri
 String p1Pfad() { String u = P1_URL; u.replace("https://", ""); return u.substring(u.indexOf('/')); }
 
 // Diagnose per MQTT (p1/claude), z. B. mit einem MQTT-Client am Laptop mitlesen
-void kLog(const String& s) { senden("p1/claude", String(millis()) + " " + s + " heap " + ESP.getFreeHeap()); }
+void kLog(const String& s) { senden("p1/claudelog", String(millis()) + " " + s + " heap " + ESP.getFreeHeap() + " groesster Block " + heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)); }
 
 void kSchritt(const String& s) { xSemaphoreTake(mtx, portMAX_DELAY); kSchritte.push_back(s); if (kSchritte.size() > 40) kSchritte.erase(kSchritte.begin()); xSemaphoreGive(mtx); }
 
-// ---------- Aufnahme hochladen (laeuft im MQTT-Task, Aufrufe aus den Abonnements) ----------
-WiFiClientSecure* upCli = nullptr;
-uint32_t upBytes = 0;
-unsigned long upLetzte = 0;                      // Zeit des letzten Audio-Pakets
+WiFiClientSecure kCli;                           // Verbindung fuer Abfragen und Vorlesen
 
+// Zustand der Anlage als kurze JSON-Zeile fuer Claude (aus dem zuletzt empfangenen Status)
+String statusFuerClaude() {
+  String s; xSemaphoreTake(mtx, portMAX_DELAY); s = statusRoh; xSemaphoreGive(mtx);
+  s.replace("\r", ""); s.replace("\n", "");
+  return s.length() ? s : "{}";
+}
+
+// ---------- Aufnahme (macht der Giga) ----------
+// Der Giga nimmt die ganze Aufnahme in seinem Speicher auf und schickt sie selbst an den Server
+// (das M5 hat dafuer zu wenig RAM). Er meldet per MQTT: p1/audio/start, p1/audio/pegel,
+// p1/claude/start (sendet), p1/claude/job (Job-Nummer) oder p1/claude/fehler. Alles im MQTT-Task,
+// deshalb hier nur Variablen setzen - nie blockieren.
 void upStart() {
-  if (upCli) { upCli->stop(); delete upCli; upCli = nullptr; }
   xSemaphoreTake(mtx, portMAX_DELAY); kSchritte.clear(); xSemaphoreGive(mtx);
-  kFrage = ""; kAntwort = ""; kAenderung = ""; kMeldung = ""; kJob = ""; kN = 0; upBytes = 0;
-  kz = K_HOERT; kSeit = millis(); kZeigen = true; kTonStopp = true; upLetzte = millis();
-  upCli = new WiFiClientSecure();
-  if (!CA_LISTE.length()) CA_LISTE = caListe();
-  upCli->setCACert(CA_LISTE.c_str());
-  if (!uhrOk()) { uhrStellen(); for (int i = 0; i < 50 && !uhrOk(); i++) delay(100); }
-  upCli->setTimeout(10);
-  if (!upCli->connect(p1Host().c_str(), 443)) {
-    char e[100] = ""; upCli->lastError(e, sizeof(e));
-    kMeldung = "Server nicht erreichbar"; kz = K_FEHLER; kLog("upload connect fehlgeschlagen: " + String(e)); delete upCli; upCli = nullptr; return;
-  }
-  kLog("upload verbunden");
-  upCli->print("POST " + p1Pfad() + "/stimme HTTP/1.1\r\nHost: " + p1Host() + "\r\nX-P1-Token: " P1_TOKEN "\r\n"
-               "Content-Type: application/octet-stream\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n");
+  kFrage = ""; kAntwort = ""; kAenderung = ""; kMeldung = ""; kJob = ""; kN = 0;
+  kz = K_HOERT; kSeit = millis(); kZeigen = true; kTonStopp = true;
 }
-
-void upDaten(const uint8_t* d, size_t n) {
-  if (!upCli || kz != K_HOERT) return;
-  char kopf[12]; snprintf(kopf, sizeof(kopf), "%x\r\n", (unsigned)n);
-  upCli->print(kopf); upCli->write(d, n); upCli->print("\r\n");
-  upBytes += n; upLetzte = millis();
-  int mx = 0; for (size_t i = 0; i < n; i++) mx = max(mx, abs((int)d[i] - 128));
-  kPegel = mx;
-}
-
-// Falls das Ende-Signal verloren geht: nach 1,5 s ohne Audio gilt die Aufnahme als fertig
-void upWache() { if (upCli && kz == K_HOERT && millis() - upLetzte > 1500) { kLog("kein Ende-Signal, beende Aufnahme"); upEnde(); } }
-
-void upEnde() {
-  if (!upCli) return;
-  kz = K_SENDET;
-  upCli->print("0\r\n\r\n");
-  String antwort; unsigned long t0 = millis();
-  while ((upCli->connected() || upCli->available()) && millis() - t0 < 15000) {
-    while (upCli->available()) antwort += (char)upCli->read();
-    delay(5);
-  }
-  upCli->stop(); delete upCli; upCli = nullptr;
-  kLog("upload ende, " + String(upBytes) + " Bytes, Antwort: " + antwort.substring(0, 160));
-  int b = antwort.indexOf("\r\n\r\n");
-  JsonDocument j;
-  if (b < 0 || deserializeJson(j, antwort.substring(b + 4)) || !j["id"].is<const char*>()) {
-    String f = b >= 0 ? antwort.substring(b + 4) : "keine Antwort";
-    JsonDocument e; if (!deserializeJson(e, f) && e["fehler"].is<const char*>()) f = (const char*)e["fehler"];
-    kMeldung = upBytes < 2400 ? "Zu kurz gesprochen - Taste laenger halten" : f; kz = K_FEHLER; return;
-  }
-  kJob = (const char*)j["id"]; kN = 0; kz = K_DENKT;
-  kSchritt(String("Aufnahme ") + String(upBytes / 8000.0, 1) + " s gesendet");
-}
+void upPegel(const char* p) { kPegel = atoi(p); }
+void upSendet(const char* p) { kz = K_SENDET; kSchritt(String("Aufnahme ") + String(atoi(p) / 8000.0, 1) + " s wird gesendet"); }
+void upJob(const char* id) { kJob = id; kN = 0; kz = K_DENKT; kZeigen = true; }
+void upFehler(const char* t) { kMeldung = t; kz = K_FEHLER; kZeigen = true; }
+void upWache() {}
 
 // ---------- Abfragen, Vorlesen, Uebernehmen (eigener Task) ----------
-WiFiClientSecure kCli;
 String p1Anfrage(const char* methode, const String& pfad, int* code = nullptr) {
   HTTPClient h;
-  h.setReuse(true); h.setTimeout(15000);
+  h.setReuse(false); h.setTimeout(15000);
   if (!h.begin(kCli, "https://" + p1Host() + p1Pfad() + pfad)) return "";
   h.addHeader("X-P1-Token", P1_TOKEN);
   int c = strcmp(methode, "POST") == 0 ? h.POST("") : h.GET();
   if (code) *code = c;
   String r = c > 0 ? h.getString() : "";
-  h.end();
+  h.end(); kCli.stop();
   return r;
 }
 
@@ -135,8 +101,38 @@ void vorlesen() {
     if (kTonStopp) M5.Speaker.stop(0);
     M5.Speaker.setVolume(140);
   }
-  h.end();
+  h.end(); kCli.stop();
   kz = K_FERTIG;
+}
+
+// ---------- Aktionen: Claude bedient die Anlage ----------
+std::vector<String> kAktionen;
+void aktionAusfuehren(const String& a) {
+  auto warten = [](int ms) { vTaskDelay(pdMS_TO_TICKS(ms)); };
+  kSchritt("Aktion: " + a);
+  if (a == "aufzug_an")        { if (!S.aufzug) befehl('a'); }
+  else if (a == "aufzug_aus")  { if (S.aufzug) befehl('a'); }
+  else if (a == "freigeben")   befehl('s');
+  else if (a == "weiche1_looping") { if (S.weiche == 2) befehl('w'); }
+  else if (a == "weiche1_vorbei")  { if (S.weiche != 2) befehl('w'); }
+  else if (a == "weiche2_spirale") { if (S.hebel == 2) befehl('h'); }
+  else if (a == "weiche2_skurve")  { if (S.hebel != 2) befehl('h'); }
+  else if (a == "licht_an")    { if (!S.leds) befehl('l'); }
+  else if (a == "licht_aus")   { if (S.leds) befehl('l'); }
+  else if (a == "servo_test")  befehl('v');
+  else if (a == "weihnacht_an")  { if (!S.weihnacht) befehl('j'); }
+  else if (a == "weihnacht_aus") { if (S.weihnacht) befehl('j'); }
+  else if (a == "notaus")      befehl('x');
+  else if (a.startsWith("warte_")) { warten(constrain(a.substring(6).toInt(), 0, 120) * 1000); return; }
+  else if (a.startsWith("set_"))   { senden("p1/set", a.substring(4)); }
+  warten(700);                                     // neuen Zustand abwarten, bevor die naechste Aktion prueft
+}
+void aktionenTask(void* p) {
+  std::vector<String>* liste = (std::vector<String>*)p;
+  for (auto& a : *liste) aktionAusfuehren(a);
+  kSchritt("Aktionen fertig");
+  delete liste;
+  vTaskDelete(nullptr);
 }
 
 void claudeTask(void*) {
@@ -144,7 +140,9 @@ void claudeTask(void*) {
   kCli.setCACert(CA_LISTE.c_str());
   for (;;) {
     if (kz == K_DENKT && kJob.length()) {
-      String r = p1Anfrage("GET", "/job/" + kJob + "?ab=" + kN);
+      int code = 0;
+      String r = p1Anfrage("GET", "/job/" + kJob + "?ab=" + kN, &code);
+      if (code <= 0) kLog("abfrage fehlgeschlagen " + String(code));
       JsonDocument j;
       if (r.length() && !deserializeJson(j, r)) {
         for (JsonVariant s : j["schritte"].as<JsonArray>()) kSchritt((const char*)s);
@@ -155,6 +153,10 @@ void claudeTask(void*) {
           kAntwort = (const char*)(j["antwort"] | "");
           kAenderung = (const char*)(j["aenderung"] | "");
           if (!strcmp(st, "fehler")) kMeldung = (const char*)(j["fehler"] | "");
+          auto* liste = new std::vector<String>();
+          for (JsonVariant a : j["aktionen"].as<JsonArray>()) liste->push_back((const char*)a);
+          if (liste->size()) xTaskCreatePinnedToCore(aktionenTask, "aktionen", 6144, liste, 1, nullptr, 1);   // parallel zum Vorlesen
+          else delete liste;
           vorlesen();
           if (kMeldung.length()) kz = K_FEHLER;
         } else if (!kFrage.length()) kFrage = (const char*)(j["frage"] | "");

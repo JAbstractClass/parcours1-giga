@@ -114,6 +114,30 @@ int httpsAbruf(const String& url, mbed::Callback<void(const char*, uint32_t)> cb
   return code;
 }
 
+// HTTPS-POST mit beliebigem Inhalt (Sprachaufnahme an jl-parcours). Antwort-Text in 'antwort'.
+String* postZiel = nullptr;
+int httpsSenden(const char* url, const uint8_t* daten, size_t n, String& antwort) {
+  zeitSicherstellen();
+  static String ca = String(ISRG_ROOT_X1_PEM) + ISRG_ROOT_X2_PEM;   // minime.love66.app: Kette ueber ISRG Root X2
+  antwort = ""; postZiel = &antwort;
+  HttpsRequest* req = new HttpsRequest(WiFi.getNetwork(), ca.c_str(), HTTP_POST, url,
+                                       [](const char* b, uint32_t len) { for (uint32_t i = 0; i < len && postZiel->length() < 2000; i++) *postZiel += b[i]; });
+  req->set_header("X-P1-Token", p1Token.c_str());
+  req->set_header("X-P1-Status", statusJson().c_str());
+  req->set_header("Content-Type", "application/octet-stream");
+  HttpResponse* rsp = req->send(daten, n);
+  int code;
+  if (!rsp) { code = req->get_error(); if (code >= 0) code = -1; }
+  else {
+    unsigned long t0 = millis();
+    while (!rsp->is_message_complete() && millis() - t0 < 30000) delay(10);
+    code = rsp->is_message_complete() ? (int)rsp->get_status_code() : -2;
+  }
+  delete req;
+  postZiel = nullptr;
+  return code;
+}
+
 // ---------- WLAN ----------
 void wlanScan() {
   int n = WiFi.scanNetworks();
@@ -367,6 +391,14 @@ void webLoop() {
     }
     liedPruefen();
     antwort(c, "application/json", String("{\"ok\":") + (ok ? "true" : "false") + ",\"bytes\":" + liedBytes + "}", ok ? 200 : 500);
+  } else if (pfad.startsWith("/stimmetest")) {
+    // Test der Verbindung zum Sprach-Server ohne Mikrofon: 1 s Stille hochladen (ergibt "nichts verstanden")
+    antwort(c, "text/plain; charset=utf-8", "Testaufnahme wird gesendet");
+    c.stop();
+    for (uint32_t i = 0; i < 8000; i++) aufnahme[i] = 128 + (i % 7) - 3;
+    audioGesamt = 8000;
+    stimmeSenden();
+    return;
   } else if (pfad.startsWith("/lampe")) {
     String f = param(pfad, "f");
     if (f.length() == 1 && strchr("agorbw0", f[0])) { lampeModus = f[0]; ledUpdate(); }

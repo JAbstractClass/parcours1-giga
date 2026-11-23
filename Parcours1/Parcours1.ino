@@ -117,7 +117,8 @@ void servoUpdate() {
 bool aufzugAn = false, ledsAn = true, stoppOffen = false;
 bool notAus = false;            // 'x' gedrueckt: bleibt rot, bis der Aufzug wieder gestartet wird
 bool m5Verloren = false;        // Verbindung zum M5Stack weg -> sicherer Zustand (WebMqtt.ino)
-bool einstSenden = false;       // Einstellungen per MQTT neu an das M5 schicken
+bool einstSenden = false;
+String statusJson();       // Einstellungen per MQTT neu an das M5 schicken
 bool stau = false;              // Stoerung: Aufzug laeuft, aber seit STAU_S keine Kugel
 unsigned long letzteKugelT = 0;
 unsigned long laufMs = 0, laufSeit = 0;   // Betriebszeit des Aufzugs seit Neustart
@@ -258,17 +259,21 @@ void sensorUpdate() {
 // ---------- Sprechtaste und Mikrofon ----------
 // Das Mikrofon an A7 wird per DMA mit 8 kHz gelesen (Arduino_AdvancedAnalog), unabhaengig davon,
 // wie lange ein loop-Durchlauf dauert (Puffer fuer 2 s). Solange die Sprechtaste gehalten wird,
-// gehen die Samples als 8-Bit-Audio in Stuecken per MQTT ans M5Stack (p1/audio/start, p1/audio, p1/audio/ende),
-// das sie an den Server zur Spracherkennung weiterreicht (siehe server/jl-parcours).
+// sammelt der Giga die Aufnahme in seinem Speicher (max. 30 s) und zeigt dem M5 den Pegel.
+// Beim Loslassen schickt er sie selbst per HTTPS an den Server (jl-parcours, Spracherkennung + Claude)
+// und gibt dem M5 die Job-Nummer weiter; das M5 zeigt Claudes Schritte und liest die Antwort vor.
+// (Das M5 hat zu wenig Speicher, um die Aufnahme selbst verschluesselt hochzuladen.)
 AdvancedADC mikro(MIKROFON);
 bool mikroAn = false, sprechen = false;
 int MIC_GAIN = 6;                                  // Verstaerkung vor der Wandlung auf 8 Bit
 int micPP = 0, micMitte = 0;
 float micDc = 2048;                                // laufender Mittelwert (Gleichanteil)
 int micMin = 4095, micMax = 0; unsigned long micT = 0, micSum = 0, micN = 0;
-uint8_t audioRaus[960]; int audioN = 0;             // gesammelte 8-Bit-Samples bis zum naechsten Paket (PicoMQTT: max. 1 KB pro Nachricht)
-uint32_t audioGesamt = 0; unsigned long sprechStart = 0;
 const uint32_t AUDIO_MAX = 30UL * 8000;            // hoechstens 30 s
+uint8_t aufnahme[AUDIO_MAX];
+uint32_t audioGesamt = 0; int audioSpitze = 0; unsigned long pegelT = 0;
+String p1Token = "";                               // Zugang zum Server, kommt vom M5 per MQTT (steht nicht im Repo)
+const char* P1_STIMME_URL = "https://minime.love66.app/p1/stimme";
 
 void mikroSetup() {
   mikroAn = mikro.begin(AN_RESOLUTION_12, 8000, 256, 64);
@@ -279,33 +284,60 @@ void sprechtasteUpdate() {
   gedrueckt(tL);                                   // Entprellung weiterlaufen lassen
   bool g = tL.zustand != tL.ruhe;
   if (g && !sprechen) {
-    sprechen = true; audioN = 0; audioGesamt = 0; sprechStart = millis();
+    sprechen = true; audioGesamt = 0;
     Serial.println("Sprechtaste gedrueckt");
     audioSenden("p1/audio/start", (const uint8_t*)"8000", 4);
-  } else if (!g && sprechen) {
-    sprechen = false;
-    if (audioN) { audioSenden("p1/audio", audioRaus, audioN); audioN = 0; }
-    audioSenden("p1/audio/ende", (const uint8_t*)"1", 1);
-    Serial.print("Sprechtaste losgelassen, "); Serial.print(audioGesamt / 8000.0, 1); Serial.println(" s Audio");
   }
-  if (!mikroAn) return;
-  while (mikro.available()) {
-    SampleBuffer buf = mikro.read();
-    for (size_t i = 0; i < buf.size(); i++) {
-      int v = buf[i];
-      micMin = min(micMin, v); micMax = max(micMax, v); micSum += v; micN++;
-      micDc += (v - micDc) * 0.002f;
-      if (sprechen && audioGesamt < AUDIO_MAX) {
-        int s = 128 + (int)((v - micDc) * MIC_GAIN / 16);
-        audioRaus[audioN++] = (uint8_t)constrain(s, 0, 255); audioGesamt++;
-        if (audioN == sizeof(audioRaus)) { audioSenden("p1/audio", audioRaus, audioN); audioN = 0; }
+  if (mikroAn) {
+    while (mikro.available()) {
+      SampleBuffer buf = mikro.read();
+      for (size_t i = 0; i < buf.size(); i++) {
+        int v = buf[i];
+        micMin = min(micMin, v); micMax = max(micMax, v); micSum += v; micN++;
+        micDc += (v - micDc) * 0.002f;
+        if (sprechen && audioGesamt < AUDIO_MAX) {
+          int s = 128 + (int)((v - micDc) * MIC_GAIN / 16);
+          s = constrain(s, 0, 255);
+          aufnahme[audioGesamt++] = (uint8_t)s;
+          audioSpitze = max(audioSpitze, abs(s - 128));
+        }
       }
+      buf.release();
     }
-    buf.release();
+  }
+  if (sprechen && millis() - pegelT >= 150) {      // Pegel fuers M5 (Claude-Symbol pulsiert)
+    pegelT = millis(); String p = String(audioSpitze); audioSpitze = 0;
+    audioSenden("p1/audio/pegel", (const uint8_t*)p.c_str(), p.length());
+  }
+  if (!g && sprechen) {
+    sprechen = false;
+    Serial.print("Sprechtaste losgelassen, "); Serial.print(audioGesamt / 8000.0, 1); Serial.println(" s Audio");
+    stimmeSenden();
   }
   if (millis() - micT >= 200) {                    // Pegel fuers Dashboard (auf 10 Bit skaliert wie vorher)
     micT = millis(); micPP = (micMax - micMin) >> 2; micMitte = micN ? (micSum / micN) >> 2 : 0;
     micMin = 4095; micMax = 0; micSum = 0; micN = 0;
+  }
+}
+
+// Aufnahme an den Server, Job-Nummer bzw. Fehler ans M5
+void stimmeSenden() {
+  auto melden = [](const char* thema, const String& t) { audioSenden(thema, (const uint8_t*)t.c_str(), t.length()); };
+  if (audioGesamt < 2400) { melden("p1/claude/fehler", "Zu kurz gesprochen - Taste laenger halten"); return; }
+  if (p1Token.length() < 24) { melden("p1/claude/fehler", "Kein Server-Zugang: M5 nicht verbunden"); return; }
+  melden("p1/claude/start", String(audioGesamt));
+  String antwort;
+  int code = httpsSenden(P1_STIMME_URL, aufnahme, audioGesamt, antwort);
+  int i = antwort.indexOf("\"id\"");
+  int a = i >= 0 ? antwort.indexOf('"', antwort.indexOf(':', i) + 1) : -1;
+  int e = a >= 0 ? antwort.indexOf('"', a + 1) : -1;
+  if (code == 200 && a >= 0 && e > a) {
+    String id = antwort.substring(a + 1, e);
+    Serial.print("Sprachauftrag "); Serial.println(id);
+    melden("p1/claude/job", id);
+  } else {
+    Serial.print("Sprachauftrag fehlgeschlagen: "); Serial.print(code); Serial.print(" "); Serial.println(antwort.substring(0, 120));
+    melden("p1/claude/fehler", "Server-Fehler " + String(code));
   }
 }
 

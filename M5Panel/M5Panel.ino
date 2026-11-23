@@ -104,7 +104,7 @@ bool verbunden() { return S.da && millis() - S.t < VERLOREN_MS; }
 // Der Broker laeuft in einem eigenen Task auf Kern 0: wartet er auf einen langsamen Client,
 // bleibt die Anzeige trotzdem fluessig und die Tasten reagieren. Austausch ueber einen Mutex.
 SemaphoreHandle_t mtx;
-String neuStatus, neuEinst; bool hatStatus = false, hatEinst = false;
+String neuStatus, neuEinst, statusRoh; bool hatStatus = false, hatEinst = false;
 struct Ausgang { String t, p; };
 std::vector<Ausgang> ausgang;
 void senden(const char* thema, const String& text) {
@@ -112,11 +112,13 @@ void senden(const char* thema, const String& text) {
 }
 void mqttTask(void*) {
   broker.socket_timeout_millis = 5000;   // stockt das WLAN, den Giga nicht gleich rauswerfen (sonst staendige Neuverbindungen)
-  broker.subscribe("p1/status", [](const char* topic, const char* payload) { xSemaphoreTake(mtx, portMAX_DELAY); neuStatus = payload; hatStatus = true; xSemaphoreGive(mtx); });
+  broker.subscribe("p1/status", [](const char* topic, const char* payload) { xSemaphoreTake(mtx, portMAX_DELAY); neuStatus = payload; statusRoh = payload; hatStatus = true; xSemaphoreGive(mtx); });
   broker.subscribe("p1/einst", [](const char* topic, const char* payload) { xSemaphoreTake(mtx, portMAX_DELAY); neuEinst = payload; hatEinst = true; xSemaphoreGive(mtx); });
   broker.subscribe("p1/audio/start", [](const char* topic, const char* payload) { upStart(); });
-  broker.subscribe("p1/audio", [](char* topic, void* payload, size_t size) { upDaten((const uint8_t*)payload, size); });
-  broker.subscribe("p1/audio/ende", [](const char* topic, const char* payload) { upEnde(); });
+  broker.subscribe("p1/audio/pegel", [](const char* topic, const char* payload) { upPegel(payload); });
+  broker.subscribe("p1/claude/start", [](const char* topic, const char* payload) { upSendet(payload); });
+  broker.subscribe("p1/claude/job", [](const char* topic, const char* payload) { upJob(payload); });
+  broker.subscribe("p1/claude/fehler", [](const char* topic, const char* payload) { upFehler(payload); });
   broker.begin();
   udp.begin(47901);
   unsigned long hbT = 0, suchT = 0;
@@ -127,6 +129,8 @@ void mqttTask(void*) {
     if (WiFi.status() == WL_CONNECTED) {
       uhrStellen();                                   // Uhrzeit per NTP (fuer HTTPS-Zertifikate)
       if (now - hbT >= 400) { hbT = now; broker.publish("p1/hb", String(WiFi.RSSI())); }   // Inhalt: eigene WLAN-Staerke
+      static unsigned long tokT = 0;
+      if (now - tokT >= 5000) { tokT = now; broker.publish("p1/token", P1_TOKEN); }    // Server-Zugang fuer den Giga (nur im lokalen Netz)
       if (now - suchT >= 1000) { suchT = now; udp.beginPacket(WiFi.broadcastIP(), 47900); udp.print("P1BROKER"); udp.endPacket(); }
     }
     std::vector<Ausgang> raus;
@@ -529,8 +533,9 @@ void setup() {
   M5.Display.setRotation(0);   // bei diesem M5Stack Core: 0 = Querformat 320x240, Tasten unten
   M5.Speaker.setVolume(140);
   M5.BtnA.setHoldThresh(1000); M5.BtnB.setHoldThresh(1500); M5.BtnC.setHoldThresh(1000);   // NOT-AUS nur bei bewusst langem Druck
-  cv.setColorDepth(16);
-  if (!cv.createSprite(320, 240)) { cv.setColorDepth(8); cv.createSprite(320, 240); }
+  // 8 Bit Farbtiefe: das Zwischenbild braucht so 77 statt 154 KB - der Rest wird fuer HTTPS (TLS) gebraucht
+  cv.setColorDepth(8);
+  cv.createSprite(320, 240);
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
   WiFi.begin(WLAN_SSID, WLAN_PASS);
