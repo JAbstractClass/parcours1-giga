@@ -10,8 +10,10 @@
 # landen sie auf main, GitHub Actions baut, der Giga holt sich die Firmware selbst.
 #
 #   POST /stimme              rohes Audio u8 8 kHz mono (auch chunked) -> {"id"}
+#                             Header X-P1-Status: aktueller Zustand der Anlage (JSON vom Giga), optional
 #   POST /text                {"text"} (zum Testen ohne Mikrofon)      -> {"id"}
-#   GET  /job/<id>?ab=<n>     -> {status, frage, schritte[n:], n, antwort, aenderung, fehler}
+#   GET  /job/<id>?ab=<n>     -> {status, frage, schritte[n:], n, antwort, aenderung, aktionen, fehler}
+#                             aktionen: Befehle fuer die Anlage, die das M5 per MQTT ausfuehrt
 #   GET  /tts/<id>            Antwort als u8 8 kHz mono (wartet auf die Synthese)
 #   POST /job/<id>/ja         Branch auf main bringen (push)      -> {"ok"} | {"fehler"}
 #   POST /job/<id>/nein       Branch verwerfen
@@ -75,6 +77,17 @@ Regeln:
 - Jede Firmware muss Web.ino mit dem OTA-Teil behalten.
 - Wenn du etwas geaendert hast: git add und git commit mit einer kurzen deutschen Nachricht. NICHT pushen.
 - Bei reinen Fragen nichts aendern, nur antworten.
+
+Du kannst die Anlage auch direkt BEDIENEN (ohne Code zu aendern). Schreib dafuer am Ende deiner Antwort pro Aktion
+eine eigene Zeile "AKTION: <name>". Diese Zeilen werden nicht vorgelesen, sondern der Reihe nach ausgefuehrt.
+Erlaubte Aktionen:
+  aufzug_an, aufzug_aus, freigeben (eine Kugel durch die Stoppstelle), weiche1_looping, weiche1_vorbei,
+  weiche2_spirale, weiche2_skurve, licht_an, licht_aus, servo_test, weihnacht_an, weihnacht_aus, notaus,
+  warte_<sekunden> (z. B. warte_10, hoechstens 120),
+  set_<einstellung>=<zahl> (z. B. set_aufzug_pwm=150, set_stopp_ms=200; Namen wie in WebEinstellungen.ino).
+Den aktuellen Zustand der Anlage bekommst du mit (JSON wie /status). Fuer Bedienwuensche reicht AKTION - dafuer
+keine Dateien lesen und nichts committen. Beispiel: "starte den Aufzug fuer zehn Sekunden" ->
+  "Ich lasse den Aufzug zehn Sekunden laufen." + AKTION: aufzug_an + AKTION: warte_10 + AKTION: aufzug_aus
 - Deine letzte Nachricht wird laut vorgelesen: 1 bis 3 kurze Saetze, gesprochene Sprache, kein Markdown, keine Dateipfade
   mit Sonderzeichen, keine Listen. Sag, was du gemacht hast und dass man am Panel mit Taste C uebernimmt, falls du etwas
   geaendert hast."""
@@ -157,11 +170,19 @@ def schritt_text(block):
     return name
 
 
-def neuer_job(frage=None, audio=None):
+verlauf = []                          # letzte Fragen/Antworten fuer Rueckfragen ("und jetzt schneller")
+letzter_job_mit_aenderung = None
+AKTIONEN = re.compile(r"^(aufzug_an|aufzug_aus|freigeben|weiche1_looping|weiche1_vorbei|weiche2_spirale|weiche2_skurve|"
+                      r"licht_an|licht_aus|servo_test|weihnacht_an|weihnacht_aus|notaus|warte_\d{1,3}|set_[a-z0-9_]{2,20}=-?\d{1,6})$")
+JA = re.compile(r"^\W*(ja|jawohl|jo|ok|okay|uebernehmen|übernehmen|übernimm|uebernimm|mach das|passt|gerne)\b.{0,20}$", re.I)
+NEIN = re.compile(r"^\W*(nein|nee|ne|verwerfen|verwirf|lass es|abbrechen|vergiss es)\b.{0,20}$", re.I)
+
+
+def neuer_job(frage=None, audio=None, zustand=""):
     jid = secrets.token_hex(6)
     job = {"id": jid, "status": "hoert" if audio is not None else "denkt", "frage": frage or "", "schritte": [],
-           "antwort": "", "aenderung": "", "fehler": "", "branch": "", "tts": None, "tts_ev": threading.Event(),
-           "t": time.time()}
+           "antwort": "", "aenderung": "", "aktionen": [], "fehler": "", "branch": "", "tts": None,
+           "tts_ev": threading.Event(), "t": time.time(), "zustand": zustand}
     with jobs_lock:
         for k in [k for k, v in jobs.items() if time.time() - v["t"] > 3600]:
             del jobs[k]
@@ -183,8 +204,23 @@ def arbeiten(job, audio):
                 raise RuntimeError("Ich habe nichts verstanden.")
             schritt(job, "Verstanden: " + job["frage"])
         job["status"] = "denkt"
-        with claude_lock:
-            claude_lauf(job)
+        global letzter_job_mit_aenderung
+        offen = letzter_job_mit_aenderung if letzter_job_mit_aenderung and letzter_job_mit_aenderung["branch"] else None
+        if offen and JA.match(job["frage"]):
+            r = uebernehmen(offen)
+            job["antwort"] = "Alles klar, ist übernommen. GitHub baut jetzt, und der Giga holt sich die neue Firmware in ein bis zwei Minuten." if r.get("ok") else r.get("fehler", "Das ging nicht.")
+            schritt(job, "Aenderung von vorhin uebernommen" if r.get("ok") else "Uebernehmen ging nicht")
+        elif offen and NEIN.match(job["frage"]):
+            verwerfen(offen)
+            job["antwort"] = "Okay, ich habe die Änderung verworfen."
+            schritt(job, "Aenderung von vorhin verworfen")
+        else:
+            with claude_lock:
+                claude_lauf(job)
+            if job["branch"]:
+                letzter_job_mit_aenderung = job
+        verlauf.append((job["frage"], fuer_sprache(job["antwort"])[:300]))
+        del verlauf[:-4]
         job["status"] = "fertig"
     except Exception as e:  # noqa: BLE001 - jede Stoerung wird angezeigt und vorgelesen
         job["fehler"] = str(e)[:300]
@@ -210,7 +246,13 @@ def claude_lauf(job):
     env = dict(GIT_ENV, USER="jlclaude", LOGNAME="jlclaude", SHELL="/bin/bash", LANG="C.UTF-8", TERM="dumb", NO_COLOR="1",
                PATH=f"{os.path.join(BASE, '.local/bin')}:/usr/local/bin:/usr/bin:/bin",
                CLAUDE_CONFIG_DIR=os.path.join(BASE, "accounts", ACCOUNT))
-    args = [CLAUDE, "-p", job["frage"], "--output-format", "stream-json", "--verbose",
+    teile = []
+    if verlauf:
+        teile.append("Bisheriges Gespraech:\n" + "\n".join(f"Frage: {f}\nDeine Antwort: {a}" for f, a in verlauf[-3:]))
+    if job["zustand"]:
+        teile.append("Aktueller Zustand der Anlage (JSON): " + job["zustand"][:1500])
+    teile.append("Neue Sprachanweisung: " + job["frage"])
+    args = [CLAUDE, "-p", "\n\n".join(teile), "--output-format", "stream-json", "--verbose",
             "--no-session-persistence", "--disable-slash-commands", "--append-system-prompt", SYSTEM,
             "--tools", "Read,Edit,Write,Grep,Glob,Bash,TodoWrite",
             "--allowedTools", "Read Edit Write Grep Glob TodoWrite Bash(git status:*) Bash(git diff:*) Bash(git log:*) "
@@ -247,7 +289,17 @@ def claude_lauf(job):
         if re.search(r"rate.?limit|usage limit|429|quota", err, re.I):
             raise RuntimeError("Das Claude-Limit ist gerade aufgebraucht.")
         raise RuntimeError("Claude hat keine Antwort geliefert." if p.returncode == 0 else f"Claude abgebrochen ({p.returncode})")
-    job["antwort"] = ergebnis
+    akt, rest = [], []
+    for z in ergebnis.splitlines():
+        m = re.match(r"^\W*AKTION:\s*(\S+)\s*$", z.strip(), re.I)
+        if m and AKTIONEN.match(m.group(1).lower()):
+            akt.append(m.group(1).lower())
+        elif not m:
+            rest.append(z)
+    job["aktionen"] = akt[:30]
+    job["antwort"] = "\n".join(rest).strip() or ("Mache ich." if akt else "")
+    if akt:
+        schritt(job, "Aktionen: " + ", ".join(akt))
     with git_lock:
         # nicht committete Reste mitnehmen, damit nichts verloren geht
         if git("status", "--porcelain"):
@@ -339,6 +391,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(200, {"status": j["status"], "frage": j["frage"], "schritte": j["schritte"][ab:],
                                         "n": len(j["schritte"]), "antwort": fuer_sprache(j["antwort"]) if j["status"] in ("fertig", "fehler") else "",
                                         "aenderung": j["aenderung"] if j["branch"] else "", "fehler": j["fehler"],
+                                        "aktionen": j["aktionen"] if j["status"] in ("fertig", "fehler") else [],
                                         "tts": j["tts_ev"].is_set()})
         m = re.fullmatch(r"/tts/([a-f0-9]{12})", self.path)
         if m and (j := self.job(m.group(1))):
@@ -359,7 +412,7 @@ class Handler(BaseHTTPRequestHandler):
             audio = self.body(MAX_AUDIO)
             if not audio or len(audio) < 2400:
                 return self.send_json(400, {"fehler": "Aufnahme zu kurz oder zu lang"})
-            return self.send_json(200, {"id": neuer_job(audio=audio)})
+            return self.send_json(200, {"id": neuer_job(audio=audio, zustand=self.headers.get("X-P1-Status", ""))})
         if self.path == "/text":
             b = self.body(16 * 1024)
             try:
@@ -368,7 +421,7 @@ class Handler(BaseHTTPRequestHandler):
                 text = ""
             if not text:
                 return self.send_json(400, {"fehler": "text fehlt"})
-            return self.send_json(200, {"id": neuer_job(frage=text)})
+            return self.send_json(200, {"id": neuer_job(frage=text, zustand=self.headers.get("X-P1-Status", ""))})
         m = re.fullmatch(r"/job/([a-f0-9]{12})/(ja|nein)", self.path)
         if m and (j := self.job(m.group(1))):
             self.body(1024)
