@@ -3,11 +3,6 @@
 // ("P1BROKER" an Port 47900). Der Giga verbindet sich als Client - ganz ohne Internet.
 // (Dateiname beginnt mit "Web", damit Arduino sie nach Web.ino einfuegt.)
 //
-// Die ganze Netzwerkarbeit fuer MQTT laeuft in einem eigenen Thread: Stockt das WLAN
-// (Paketverlust im Hotspot -> TCP wartet auf Wiederholung), laufen Anlage, Sensor und
-// Webseite trotzdem weiter. Der Thread schickt immer nur den neuesten Status.
-// Eingehende Befehle reicht er an die Hauptschleife weiter (dort werden sie ausgefuehrt).
-//
 // Themen:
 //   p1/status   Giga -> M5   Zustand als JSON (wie /status), 4x pro Sekunde
 //   p1/einst    Giga -> M5   alle Einstellungen als JSON (wie /einst), nach jeder Aenderung
@@ -15,119 +10,63 @@
 //   p1/set      M5 -> Giga   "schluessel=wert", z. B. "weiche_ms=800"
 //   p1/lampe    M5 -> Giga   Testfarbe der Statuslampe (a g o r b w 0)
 //   p1/get      M5 -> Giga   Einstellungen neu senden
-//   p1/hb       M5 -> Giga   Lebenszeichen alle 400 ms (Inhalt: WLAN-Staerke des M5).
-//                            Bleibt es aus, geht die Anlage in den sicheren Zustand.
+//   p1/hb       M5 -> Giga   Lebenszeichen alle 500 ms. Bleibt es aus, geht die Anlage in den sicheren Zustand.
 #include <ArduinoMqttClient.h>
-#include <mbed.h>
-#include <vector>
 
 WiFiClient mqttNetz;
 MqttClient mqtt(mqttNetz);
 WiFiUDP suchUdp;
 const int SUCH_PORT = 47900;
 const unsigned long M5_TIMEOUT_MS = 5000;   // so lange ohne Lebenszeichen -> sicherer Zustand
-
-rtos::Thread mqttThread(osPriorityBelowNormal, 8192, nullptr, "mqtt");
-rtos::Mutex mqttMtx;
-String mqttStatusRaus, mqttEinstRaus;       // von der Hauptschleife zum Senden abgelegt
-bool statusRaus = false, einstRaus = false;
-struct MqttEin { String thema, text; };
-std::vector<MqttEin> mqttEin;               // vom Thread empfangen, von der Hauptschleife ausgefuehrt
-volatile unsigned long m5Hb = 0;            // Zeit des letzten Lebenszeichens
-volatile bool mqttVerbunden = false, brokerBekannt = false;
-bool m5Aktiv = false;                       // M5 hat sich gemeldet -> Waechter scharf
+IPAddress brokerIp;
+bool brokerBekannt = false;
+unsigned long brokerGesehen = 0, mqttVersuch = 0, mqttPause = 0, statusT = 0, m5Hb = 0;
+bool m5Aktiv = false;           // M5 hat sich gemeldet -> Waechter scharf
+bool udpAn = false;             // Suche nach dem M5 laeuft (belegt einen der wenigen Sockets des Giga)
 
 String m5Status() {
-  return String("\"") + (m5Aktiv ? "ok" : m5Verloren ? "verloren" : mqttVerbunden ? "warte" : brokerBekannt ? "getrennt" : "aus") + "\"";
-}
-
-// ----- laeuft im MQTT-Thread -----
-void mqttNachricht(int groesse) {
-  String thema = mqtt.messageTopic();
-  String text;
-  while (mqtt.available()) text += (char)mqtt.read();
-  if (thema == "p1/hb") { m5Hb = millis(); m5Rssi = text.toInt(); return; }
-  mqttMtx.lock(); if (mqttEin.size() < 20) mqttEin.push_back({thema, text}); mqttMtx.unlock();
+  return String("\"") + (m5Aktiv ? "ok" : m5Verloren ? "verloren" : mqtt.connected() ? "warte" : brokerBekannt ? "getrennt" : "aus") + "\"";
 }
 
 void mqttSenden(const char* thema, const String& text) {
+  if (!mqtt.connected()) return;
   mqtt.beginMessage(thema, (unsigned long)text.length());
   mqtt.print(text);
   mqtt.endMessage();
 }
 
-void mqttThreadLauf() {
-  IPAddress brokerIp;
-  bool udpAn = suchUdp.begin(SUCH_PORT);
-  unsigned long brokerGesehen = 0, versuch = 0, pause = 0;
-  mqtt.setId("giga-parcours1");
-  mqtt.setKeepAliveInterval(60000);
-  mqtt.setConnectionTimeout(3000);
-  mqtt.setTxPayloadSize(1100);
-  mqtt.onMessage(mqttNachricht);
-  for (;;) {
-    bool verb = mqtt.connected();
-    // Die UDP-Suche belegt einen der wenigen Sockets des Giga: nur offen, solange keine Verbindung besteht
-    if (verb && udpAn) { suchUdp.stop(); udpAn = false; }
-    if (!verb && !udpAn) udpAn = suchUdp.begin(SUCH_PORT);
-    if (udpAn && suchUdp.parsePacket() > 0) {
-      char b[32]; int l = suchUdp.read(b, sizeof(b) - 1); b[max(0, l)] = 0;
-      if (strncmp(b, "P1BROKER", 8) == 0) {
-        IPAddress ip = suchUdp.remoteIP();
-        if (!brokerBekannt || ip != brokerIp) { brokerIp = ip; pause = 0; Serial.print("M5Stack-Broker gefunden: "); Serial.println(ip); }
-        brokerBekannt = true; brokerGesehen = millis();
-      }
-    }
-    if (!verb) {
-      mqttVerbunden = false;
-      // nur verbinden, wenn das M5 sich gerade meldet
-      if (brokerBekannt && millis() - brokerGesehen < 2500 && millis() - versuch >= pause) {
-        versuch = millis();
-        unsigned long tc = millis();
-        bool ok = mqtt.connect(brokerIp, 1883);
-        dConnA = max(dConnA, millis() - tc); verbindungen++;
-        if (ok) {
-          mqtt.subscribe("p1/cmd"); mqtt.subscribe("p1/set"); mqtt.subscribe("p1/lampe");
-          mqtt.subscribe("p1/get"); mqtt.subscribe("p1/hb");
-          pause = 2000; einstSenden = true;
-          Serial.println("MQTT verbunden");
-        } else pause = min(20000UL, pause * 2 + 2000);
-      }
-      rtos::ThisThread::sleep_for(std::chrono::milliseconds(20));
-      continue;
-    }
-    mqttVerbunden = true;
-    unsigned long tp = millis();
-    mqtt.poll();
-    dPollA = max(dPollA, millis() - tp);
-    // neuesten Status / Einstellungen abholen und senden
-    String st, ei; bool s1 = false, s2 = false;
-    mqttMtx.lock();
-    if (statusRaus) { st = mqttStatusRaus; statusRaus = false; s1 = true; }
-    if (einstRaus) { ei = mqttEinstRaus; einstRaus = false; s2 = true; }
-    mqttMtx.unlock();
-    unsigned long ts = millis();
-    if (s2) mqttSenden("p1/einst", ei);
-    if (s1) mqttSenden("p1/status", st);
-    dSendA = max(dSendA, millis() - ts);
-    rtos::ThisThread::sleep_for(std::chrono::milliseconds(5));
+void mqttNachricht(int groesse) {
+  String thema = mqtt.messageTopic();
+  String text;
+  while (mqtt.available()) text += (char)mqtt.read();
+  if (thema == "p1/hb") {
+    m5Hb = millis(); m5Rssi = text.toInt();   // Inhalt des Lebenszeichens: WLAN-Staerke des M5
+    if (!m5Aktiv) { m5Aktiv = true; Serial.println("M5Stack verbunden"); einstSenden = true; }
+    return;
   }
+  if (thema == "p1/cmd" && text.length() == 1 && strchr("awhslxvj", text[0])) { befehl(text[0]); statusT = 0; }
+  else if (thema == "p1/set") {
+    int e = text.indexOf('=');
+    if (e > 0 && einstSetzen(text.substring(0, e), text.substring(e + 1).toInt())) { einstAnwenden(); einstSpeichern(); }
+    einstSenden = true;
+  }
+  else if (thema == "p1/lampe" && text.length() == 1 && strchr("agorbw0", text[0])) { lampeModus = text[0]; statusT = 0; }
+  else if (thema == "p1/get") einstSenden = true;
 }
 
-// ----- laeuft in der Hauptschleife -----
 void mqttSetup() {
   if (!wlanOk) return;
-  mqttThread.start(mqttThreadLauf);
+  udpAn = suchUdp.begin(SUCH_PORT);
+  mqtt.setId("giga-parcours1");
+  mqtt.setKeepAliveInterval(60000);   // eigene Pausen (z. B. GitHub-Abfrage) duerfen die Verbindung nicht kappen
+  mqtt.setConnectionTimeout(1500);
+  mqtt.setTxPayloadSize(1100);
+  mqtt.onMessage(mqttNachricht);
 }
 
 // Waechter: das M5 war verbunden und meldet sich nicht mehr -> alles stoppen
 void m5Waechter() {
-  unsigned long hb = m5Hb;
-  if (!m5Aktiv) {
-    if (hb && millis() - hb < 1000) { m5Aktiv = true; einstSenden = true; Serial.println("M5Stack verbunden"); }
-    return;
-  }
-  if (millis() - hb < M5_TIMEOUT_MS) return;
+  if (!m5Aktiv || millis() - m5Hb < M5_TIMEOUT_MS) return;
   m5Aktiv = false;
   if (M5_WAECHTER) {
     allesStopp();
@@ -138,33 +77,52 @@ void m5Waechter() {
 
 void mqttLoop() {
   if (!wlanOk) return;
-  // War die Hauptschleife selbst blockiert (z. B. GitHub-Abfrage), ist das kein Ausfall des M5
-  static unsigned long letzterLauf = 0, statusT = 0;
-  if (millis() - letzterLauf > 400 && m5Aktiv) m5Hb = millis();
+  // War der Giga selbst blockiert (HTTPS-Abfrage, Update), ist das kein Ausfall des M5:
+  // Lebenszeichen-Uhr dann neu starten, damit der Waechter nicht faelschlich ausloest.
+  static unsigned long letzterLauf = 0;
+  if (millis() - letzterLauf > 400) m5Hb = millis();
   letzterLauf = millis();
-  if (millis() - dMT > 3000) { dMT = millis(); dPoll = dPollA; dSend = dSendA; dConn = dConnA; dPollA = dSendA = dConnA = 0; }
-
-  // empfangene Befehle ausfuehren
-  std::vector<MqttEin> ein;
-  mqttMtx.lock(); ein.swap(mqttEin); mqttMtx.unlock();
-  for (auto& m : ein) {
-    if (m.thema == "p1/cmd" && m.text.length() == 1 && strchr("awhslxvj", m.text[0])) { befehl(m.text[0]); statusT = 0; }
-    else if (m.thema == "p1/set") {
-      int e = m.text.indexOf('=');
-      if (e > 0 && einstSetzen(m.text.substring(0, e), m.text.substring(e + 1).toInt())) { einstAnwenden(); einstSpeichern(); }
-      einstSenden = true;
+  // Der Giga hat nur wenige Netzwerk-Sockets (Webserver, Webclient, GitHub, MQTT).
+  // Die UDP-Suche deshalb nur offen halten, solange keine MQTT-Verbindung besteht.
+  if (mqtt.connected() && udpAn) { suchUdp.stop(); udpAn = false; }
+  if (!mqtt.connected() && !udpAn) { udpAn = suchUdp.begin(SUCH_PORT); }
+  // Broker suchen bzw. Adresse aktuell halten
+  int n = udpAn ? suchUdp.parsePacket() : 0;
+  if (n > 0) {
+    char b[32]; int l = suchUdp.read(b, sizeof(b) - 1); b[max(0, l)] = 0;
+    if (strncmp(b, "P1BROKER", 8) == 0) {
+      IPAddress ip = suchUdp.remoteIP();
+      if (!brokerBekannt || ip != brokerIp) { brokerIp = ip; mqttPause = 0; Serial.print("M5Stack-Broker gefunden: "); Serial.println(ip); }
+      brokerBekannt = true; brokerGesehen = millis();
     }
-    else if (m.thema == "p1/lampe" && m.text.length() == 1 && strchr("agorbw0", m.text[0])) { lampeModus = m.text[0]; statusT = 0; }
-    else if (m.thema == "p1/get") einstSenden = true;
   }
+  unsigned long tp = millis();
+  if (mqtt.connected()) mqtt.poll();   // vor dem Waechter: ein wartendes Lebenszeichen zaehlt noch
+  dPollA = max(dPollA, millis() - tp);
+  if (millis() - dMT > 3000) { dMT = millis(); dPoll = dPollA; dSend = dSendA; dConn = dConnA; dPollA = dSendA = dConnA = 0; }
   m5Waechter();
+  if (!brokerBekannt) return;
 
-  // Status und Einstellungen fuer den Thread ablegen (aeltere, noch nicht gesendete werden ersetzt)
-  if (!mqttVerbunden) return;
-  if (einstSenden) { einstSenden = false; String e = einstJson(); mqttMtx.lock(); mqttEinstRaus = e; einstRaus = true; mqttMtx.unlock(); }
-  if (millis() - statusT >= 250) {
-    statusT = millis();
-    String s = statusJson();
-    mqttMtx.lock(); mqttStatusRaus = s; statusRaus = true; mqttMtx.unlock();
+  if (!mqtt.connected()) {
+    // Nur verbinden, wenn das M5 sich gerade per UDP meldet: ein Verbindungsversuch zu einem
+    // ausgeschalteten M5 blockiert den Giga sonst viele Sekunden (Webseite, Sensor, Servo).
+    if (millis() - brokerGesehen > 2500) return;
+    if (millis() - mqttVersuch < mqttPause) return;
+    mqttVersuch = millis();
+    unsigned long tc = millis();
+    bool okc = mqtt.connect(brokerIp, 1883);
+    dConnA = max(dConnA, millis() - tc); verbindungen++;
+    if (okc) {
+      mqtt.subscribe("p1/cmd"); mqtt.subscribe("p1/set"); mqtt.subscribe("p1/lampe");
+      mqtt.subscribe("p1/get"); mqtt.subscribe("p1/hb");
+      mqttPause = 2000; einstSenden = true;
+      Serial.println("MQTT verbunden");
+    } else {
+      mqttPause = min(20000UL, mqttPause * 2 + 2000);   // nicht dauernd blockieren, wenn das M5 aus ist
+      if (millis() - brokerGesehen > 10000) brokerBekannt = false;
+    }
+    return;
   }
+  if (einstSenden) { einstSenden = false; mqttSenden("p1/einst", einstJson()); }
+  if (millis() - statusT >= 250) { statusT = millis(); unsigned long ts = millis(); mqttSenden("p1/status", statusJson()); dSendA = max(dSendA, millis() - ts); }
 }
