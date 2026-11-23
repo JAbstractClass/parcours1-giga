@@ -96,6 +96,9 @@ void mqttLoop() {
   if (!brokerBekannt) return;
 
   if (!mqtt.connected()) {
+    // Nur verbinden, wenn das M5 sich gerade per UDP meldet: ein Verbindungsversuch zu einem
+    // ausgeschalteten M5 blockiert den Giga sonst viele Sekunden (Webseite, Sensor, Servo).
+    if (millis() - brokerGesehen > 2500) return;
     if (millis() - mqttVersuch < mqttPause) return;
     mqttVersuch = millis();
     if (mqtt.connect(brokerIp, 1883)) {
