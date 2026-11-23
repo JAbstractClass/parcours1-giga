@@ -89,6 +89,8 @@ int SENSOR_INV         = 0;     // 1, falls der Sensor "Kugel" und "keine Kugel"
 int STOPP_NACHLAUF_MS  = 120;   // mit Sensor: so lange nach dem Durchrollen noch offen, dann zu
 int SENSOR_TYP         = 1;     // 0 = Reflex (Kugel liegt davor), 1 = Shock (Kugel schlaegt auf)
 int SENSOR_SPERR_MS    = 150;   // Shock: Mindestabstand zwischen zwei Kugeln (Prellen der Feder ausblenden)
+int STAU_S             = 30;    // Kugelstau melden, wenn der Aufzug so lange laeuft, ohne dass eine Kugel ankommt (0 = aus)
+int M5_WAECHTER        = 1;     // 1 = Anlage stoppt, wenn das verbundene M5Stack nicht mehr antwortet
 int SENSOR_EMPF        = 10;    // Shock: Empfindlichkeit 1..10. 10 = schon ein einziger Kontakt-Zucker zaehlt,
                                 // niedriger = es braucht mehr Zucker innerhalb von 50 ms (filtert Motor-Vibration)
 const unsigned long ENTPRELL_MS = 40;
@@ -111,6 +113,11 @@ void servoUpdate() {
 }
 bool aufzugAn = false, ledsAn = true, stoppOffen = false;
 bool notAus = false;            // 'x' gedrueckt: bleibt rot, bis der Aufzug wieder gestartet wird
+bool m5Verloren = false;        // Verbindung zum M5Stack weg -> sicherer Zustand (WebMqtt.ino)
+bool einstSenden = false;       // Einstellungen per MQTT neu an das M5 schicken
+bool stau = false;              // Stoerung: Aufzug laeuft, aber seit STAU_S keine Kugel
+unsigned long letzteKugelT = 0;
+unsigned long laufMs = 0, laufSeit = 0;   // Betriebszeit des Aufzugs seit Neustart
 bool weicheLinks = true, hebelLinks = true;
 unsigned long stoppZeit = 0;
 bool live = false;              // 'm': Tasterwerte laufend ausgeben
@@ -173,8 +180,10 @@ bool gedrueckt(Taster& t) {
 
 // ---------- Funktionen ----------
 void setAufzug(bool an) {
+  if (an && !aufzugAn) laufSeit = millis();
+  if (!an && aufzugAn) laufMs += millis() - laufSeit;
   aufzugAn = an;
-  if (an) notAus = false;         // Starten gibt die Anlage nach Not-Aus wieder frei
+  if (an) { notAus = false; m5Verloren = false; stau = false; letzteKugelT = millis(); }   // Starten quittiert Stoerungen
   int v = an ? AUFZUG_PWM : 0;
   motor(AUFZUG_A, AUFZUG_B, AUFZUG_UMKEHREN ? -v : v);
   stoppZeit = millis();
@@ -194,7 +203,6 @@ void setStopp(bool offen) {
   Serial.println(offen ? "Stoppstelle offen" : "Stoppstelle zu");
 }
 
-// Eine Kugel freigeben: kurz auf, stoppUpdate macht nach STOPP_OFFEN_MS wieder zu
 // ---------- Kugelsensor ----------
 bool kugelDa = false, kugelRoh = false;
 unsigned long kugelSeit = 0, kugelWeg = 0;
@@ -225,7 +233,7 @@ void sensorUpdate() {
         burst = false;
         stossZeit = millis();
         kugelDa = true;                               // wartet jetzt an der Stoppstelle, bis freigegeben wird
-        if (SENSOR_AN) { kugelZaehler++; Serial.print("Kugel angekommen (Stoss), Zaehler "); Serial.println(kugelZaehler); }
+        if (SENSOR_AN) { kugelZaehler++; letzteKugelT = millis(); stau = false; Serial.print("Kugel angekommen (Stoss), Zaehler "); Serial.println(kugelZaehler); }
       }
     }
     return;
@@ -236,9 +244,19 @@ void sensorUpdate() {
   kugelDa = kugelRoh;
   if (!kugelDa) {                                 // Kugel hat den Sensor verlassen = durchgerollt
     kugelWeg = millis();
-    if (SENSOR_AN) { kugelZaehler++; Serial.print("Kugel durch, Zaehler "); Serial.println(kugelZaehler); }
+    if (SENSOR_AN) { kugelZaehler++; letzteKugelT = millis(); stau = false; Serial.print("Kugel durch, Zaehler "); Serial.println(kugelZaehler); }
   }
 }
+
+// Stoerung Kugelstau: Aufzug laeuft, Sensor aktiv, aber zu lange keine Kugel
+void stauUpdate() {
+  if (!aufzugAn || !SENSOR_AN || STAU_S <= 0) { stau = false; letzteKugelT = millis(); return; }
+  if (!stau && millis() - letzteKugelT > (unsigned long)STAU_S * 1000UL) {
+    stau = true;
+    Serial.print("STOERUNG: Kugelstau, seit "); Serial.print(STAU_S); Serial.println(" s keine Kugel");
+  }
+}
+unsigned long laufSekunden() { return (laufMs + (aufzugAn ? millis() - laufSeit : 0)) / 1000; }
 
 // Eine Kugel freigeben: kurz auf, stoppUpdate macht wieder zu.
 // Automatik (manuell = false): nur, wenn der Sensor eine Kugel sieht. Von Hand (Dashboard, 's'): immer.
@@ -454,6 +472,7 @@ void setup() {
   Serial.println("x=alles stoppen t=Taster m=Taster live p=alle Analogpins ?=Status");
 
   webSetup();
+  mqttSetup();
   liedPruefen();
   einstLaden();   // gespeicherte Einstellungen aus dem Flash (braucht den in webSetup eingebundenen Speicher)
 }
@@ -476,4 +495,6 @@ void loop() {
   if (live && millis() - liveZeit >= 300) { liveZeit = millis(); tasterRoh(); }
 
   webLoop();
+  mqttLoop();
+  stauUpdate();
 }

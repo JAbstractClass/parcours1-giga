@@ -3,3 +3,5 @@ site/
 tools/lzss
 Parcours1/version.h
 .DS_Store
+
+M5Panel/secrets.h

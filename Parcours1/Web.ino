@@ -172,13 +172,15 @@ void webStatusSeriell() {
 bool otaFehler() { return otaMeldung.length() > 0 && !otaMeldung.startsWith("Update laeuft"); }
 
 char ampel() {
-  if (notAus || otaFehler()) return 'r';
+  if (notAus || otaFehler() || m5Verloren || stau) return 'r';
   if (!wlanOk || WiFi.status() != WL_CONNECTED || !internetOk) return 'o';
   return 'g';
 }
 
 String ampelGrund() {
   if (notAus) return "Not-Aus";
+  if (m5Verloren) return "Verbindung zum M5Stack verloren - Anlage gestoppt";
+  if (stau) return "Kugelstau: seit " + String(STAU_S) + " s keine Kugel";
   if (otaFehler()) return otaMeldung;
   if (!wlanOk || WiFi.status() != WL_CONNECTED) return "Kein WLAN";
   if (!internetOk) return "Kein Internet";
@@ -238,6 +240,10 @@ String statusJson() {
   s += ",\"kugeln\":";    s += String(kugelZaehler);
   s += ",\"sensor\":";    s += SENSOR_AN ? "true" : "false";
   s += ",\"styp\":";      s += SENSOR_TYP;
+  s += ",\"stau\":";      s += stau ? "true" : "false";
+  s += ",\"m5\":";        s += m5Status();
+  s += ",\"lauf\":";      s += String(laufSekunden());
+  s += ",\"taster\":\"";  s += pegel(tL.pin) ? "1" : "0"; s += pegel(tM.pin) ? "1" : "0"; s += pegel(tR.pin) ? "1" : "0"; s += "\"";
   s += ",\"flanken\":";   s += String(stossFlanken);
   s += ",\"stoss\":";     s += stossZeit ? String(min(99999UL, millis() - stossZeit)) : String(99999);
   s += ",\"pegel\":\"";
@@ -334,9 +340,9 @@ void webLoop() {
     antwort(c, "application/json", statusJson());
   } else if (pfad.startsWith("/einst")) {
     // /einst -> alle Werte, /einst?k=weiche_ms&v=800 -> setzen, /einst?reset=1 -> Startwerte
-    if (param(pfad, "reset") == "1") einstZuruecksetzen();
+    if (param(pfad, "reset") == "1") { einstZuruecksetzen(); einstSenden = true; }
     String k = param(pfad, "k");
-    if (k.length() && einstSetzen(k, param(pfad, "v").toInt())) { einstAnwenden(); einstSpeichern(); }
+    if (k.length() && einstSetzen(k, param(pfad, "v").toInt())) { einstAnwenden(); einstSpeichern(); einstSenden = true; }
     antwort(c, "application/json", einstJson());
   } else if (pfad.startsWith("/lied")) {
     // Hochladen in Stuecken: POST /lied?off=0 (neu), dann ?off=<bisher> ; GET /lied?loeschen=1
