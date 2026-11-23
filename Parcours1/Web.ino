@@ -315,10 +315,10 @@ void webLoop() {
   WiFiClient c = server.accept();
   if (!c) return;
 
-  String req = zeile(c, 500);                 // z. B. "GET /cmd?c=a HTTP/1.1"
+  String req = zeile(c, 80);                  // z. B. "GET /cmd?c=a HTTP/1.1" (Browser-Vorratsverbindungen schicken nichts: nicht lange warten)
   long bodyLen = 0;
   while (c.connected()) {                      // Header lesen, nur Content-Length merken
-    String h = zeile(c, 200);
+    String h = zeile(c, 80);
     if (h.length() == 0) break;
     h.toLowerCase();
     if (h.startsWith("content-length:")) bodyLen = h.substring(15).toInt();

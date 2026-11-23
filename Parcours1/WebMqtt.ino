@@ -17,7 +17,7 @@ WiFiClient mqttNetz;
 MqttClient mqtt(mqttNetz);
 WiFiUDP suchUdp;
 const int SUCH_PORT = 47900;
-const unsigned long M5_TIMEOUT_MS = 2500;
+const unsigned long M5_TIMEOUT_MS = 4000;   // so lange ohne Lebenszeichen -> sicherer Zustand
 IPAddress brokerIp;
 bool brokerBekannt = false;
 unsigned long brokerGesehen = 0, mqttVersuch = 0, mqttPause = 0, statusT = 0, m5Hb = 0;
