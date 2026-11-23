@@ -96,7 +96,10 @@ void mqttLoop() {
       brokerBekannt = true; brokerGesehen = millis();
     }
   }
+  unsigned long tp = millis();
   if (mqtt.connected()) mqtt.poll();   // vor dem Waechter: ein wartendes Lebenszeichen zaehlt noch
+  dPollA = max(dPollA, millis() - tp);
+  if (millis() - dMT > 3000) { dMT = millis(); dPoll = dPollA; dSend = dSendA; dConn = dConnA; dPollA = dSendA = dConnA = 0; }
   m5Waechter();
   if (!brokerBekannt) return;
 
@@ -106,7 +109,10 @@ void mqttLoop() {
     if (millis() - brokerGesehen > 2500) return;
     if (millis() - mqttVersuch < mqttPause) return;
     mqttVersuch = millis();
-    if (mqtt.connect(brokerIp, 1883)) {
+    unsigned long tc = millis();
+    bool okc = mqtt.connect(brokerIp, 1883);
+    dConnA = max(dConnA, millis() - tc); verbindungen++;
+    if (okc) {
       mqtt.subscribe("p1/cmd"); mqtt.subscribe("p1/set"); mqtt.subscribe("p1/lampe");
       mqtt.subscribe("p1/get"); mqtt.subscribe("p1/hb");
       mqttPause = 2000; einstSenden = true;
@@ -118,5 +124,5 @@ void mqttLoop() {
     return;
   }
   if (einstSenden) { einstSenden = false; mqttSenden("p1/einst", einstJson()); }
-  if (millis() - statusT >= 250) { statusT = millis(); mqttSenden("p1/status", statusJson()); }
+  if (millis() - statusT >= 250) { statusT = millis(); unsigned long ts = millis(); mqttSenden("p1/status", statusJson()); dSendA = max(dSendA, millis() - ts); }
 }
