@@ -244,7 +244,7 @@ String statusJson() {
   s += ",\"diag\":\"web " + String(dWeb) + " mqtt " + String(dMqtt) + "\"";
   s += ",\"m5\":";        s += m5Status();
   s += ",\"lauf\":";      s += String(laufSekunden());
-  s += ",\"taster\":\"";  s += tL.zustand != tL.ruhe ? "1" : "0"; s += tM.zustand != tM.ruhe ? "1" : "0"; s += tR.zustand != tR.ruhe ? "1" : "0";   // 1 = gedrueckt s += "\"";
+  s += ",\"taster\":\"";  s += tL.zustand != tL.ruhe ? "1" : "0"; s += tM.zustand != tM.ruhe ? "1" : "0"; s += tR.zustand != tR.ruhe ? "1" : "0"; s += "\"";   // 1 = gedrueckt
   s += ",\"flanken\":";   s += String(stossFlanken);
   s += ",\"stoss\":";     s += stossZeit ? String(min(99999UL, millis() - stossZeit)) : String(99999);
   s += ",\"pegel\":\"";
