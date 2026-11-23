@@ -6,6 +6,15 @@
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include "Zertifikate.h"
+#include <time.h>
+
+// Beide Let's-Encrypt-Wurzeln (X1 RSA, X2 ECDSA) als eine Liste fuer mbedTLS
+String caListe() { return String(ISRG_ROOT_X1_PEM) + ISRG_ROOT_X2_PEM; }
+String CA_LISTE;
+
+// Zertifikate werden nach Datum geprueft: ohne Uhrzeit (1970) waeren sie "noch nicht gueltig"
+bool uhrOk() { return time(nullptr) > 1700000000; }
+void uhrStellen() { static bool gestartet = false; if (!gestartet) { gestartet = true; configTime(0, 0, "pool.ntp.org", "time.google.com"); } }
 
 enum KZustand { K_AUS, K_HOERT, K_SENDET, K_DENKT, K_SPRICHT, K_FERTIG, K_FEHLER };
 volatile KZustand kz = K_AUS;
@@ -21,21 +30,31 @@ unsigned long kSeit = 0;
 String p1Host() { String u = P1_URL; u.replace("https://", ""); return u.substring(0, u.indexOf('/')); }
 String p1Pfad() { String u = P1_URL; u.replace("https://", ""); return u.substring(u.indexOf('/')); }
 
+// Diagnose per MQTT (p1/claude), z. B. mit einem MQTT-Client am Laptop mitlesen
+void kLog(const String& s) { senden("p1/claude", String(millis()) + " " + s + " heap " + ESP.getFreeHeap()); }
+
 void kSchritt(const String& s) { xSemaphoreTake(mtx, portMAX_DELAY); kSchritte.push_back(s); if (kSchritte.size() > 40) kSchritte.erase(kSchritte.begin()); xSemaphoreGive(mtx); }
 
 // ---------- Aufnahme hochladen (laeuft im MQTT-Task, Aufrufe aus den Abonnements) ----------
 WiFiClientSecure* upCli = nullptr;
 uint32_t upBytes = 0;
+unsigned long upLetzte = 0;                      // Zeit des letzten Audio-Pakets
 
 void upStart() {
   if (upCli) { upCli->stop(); delete upCli; upCli = nullptr; }
   xSemaphoreTake(mtx, portMAX_DELAY); kSchritte.clear(); xSemaphoreGive(mtx);
   kFrage = ""; kAntwort = ""; kAenderung = ""; kMeldung = ""; kJob = ""; kN = 0; upBytes = 0;
-  kz = K_HOERT; kSeit = millis(); kZeigen = true; kTonStopp = true;
+  kz = K_HOERT; kSeit = millis(); kZeigen = true; kTonStopp = true; upLetzte = millis();
   upCli = new WiFiClientSecure();
-  upCli->setCACert(ISRG_ROOT_X1_PEM);
+  if (!CA_LISTE.length()) CA_LISTE = caListe();
+  upCli->setCACert(CA_LISTE.c_str());
+  if (!uhrOk()) { uhrStellen(); for (int i = 0; i < 50 && !uhrOk(); i++) delay(100); }
   upCli->setTimeout(10);
-  if (!upCli->connect(p1Host().c_str(), 443)) { kMeldung = "Server nicht erreichbar"; kz = K_FEHLER; delete upCli; upCli = nullptr; return; }
+  if (!upCli->connect(p1Host().c_str(), 443)) {
+    char e[100] = ""; upCli->lastError(e, sizeof(e));
+    kMeldung = "Server nicht erreichbar"; kz = K_FEHLER; kLog("upload connect fehlgeschlagen: " + String(e)); delete upCli; upCli = nullptr; return;
+  }
+  kLog("upload verbunden");
   upCli->print("POST " + p1Pfad() + "/stimme HTTP/1.1\r\nHost: " + p1Host() + "\r\nX-P1-Token: " P1_TOKEN "\r\n"
                "Content-Type: application/octet-stream\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n");
 }
@@ -44,10 +63,13 @@ void upDaten(const uint8_t* d, size_t n) {
   if (!upCli || kz != K_HOERT) return;
   char kopf[12]; snprintf(kopf, sizeof(kopf), "%x\r\n", (unsigned)n);
   upCli->print(kopf); upCli->write(d, n); upCli->print("\r\n");
-  upBytes += n;
+  upBytes += n; upLetzte = millis();
   int mx = 0; for (size_t i = 0; i < n; i++) mx = max(mx, abs((int)d[i] - 128));
   kPegel = mx;
 }
+
+// Falls das Ende-Signal verloren geht: nach 1,5 s ohne Audio gilt die Aufnahme als fertig
+void upWache() { if (upCli && kz == K_HOERT && millis() - upLetzte > 1500) { kLog("kein Ende-Signal, beende Aufnahme"); upEnde(); } }
 
 void upEnde() {
   if (!upCli) return;
@@ -59,6 +81,7 @@ void upEnde() {
     delay(5);
   }
   upCli->stop(); delete upCli; upCli = nullptr;
+  kLog("upload ende, " + String(upBytes) + " Bytes, Antwort: " + antwort.substring(0, 160));
   int b = antwort.indexOf("\r\n\r\n");
   JsonDocument j;
   if (b < 0 || deserializeJson(j, antwort.substring(b + 4)) || !j["id"].is<const char*>()) {
@@ -117,7 +140,8 @@ void vorlesen() {
 }
 
 void claudeTask(void*) {
-  kCli.setCACert(ISRG_ROOT_X1_PEM);
+  if (!CA_LISTE.length()) CA_LISTE = caListe();
+  kCli.setCACert(CA_LISTE.c_str());
   for (;;) {
     if (kz == K_DENKT && kJob.length()) {
       String r = p1Anfrage("GET", "/job/" + kJob + "?ab=" + kN);

@@ -122,8 +122,10 @@ void mqttTask(void*) {
   unsigned long hbT = 0, suchT = 0;
   for (;;) {
     broker.loop();
+    upWache();
     unsigned long now = millis();
     if (WiFi.status() == WL_CONNECTED) {
+      uhrStellen();                                   // Uhrzeit per NTP (fuer HTTPS-Zertifikate)
       if (now - hbT >= 400) { hbT = now; broker.publish("p1/hb", String(WiFi.RSSI())); }   // Inhalt: eigene WLAN-Staerke
       if (now - suchT >= 1000) { suchT = now; udp.beginPacket(WiFi.broadcastIP(), 47900); udp.print("P1BROKER"); udp.endPacket(); }
     }
