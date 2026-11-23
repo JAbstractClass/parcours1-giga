@@ -22,6 +22,7 @@ IPAddress brokerIp;
 bool brokerBekannt = false;
 unsigned long brokerGesehen = 0, mqttVersuch = 0, mqttPause = 0, statusT = 0, m5Hb = 0;
 bool m5Aktiv = false;           // M5 hat sich gemeldet -> Waechter scharf
+bool udpAn = false;             // Suche nach dem M5 laeuft (belegt einen der wenigen Sockets des Giga)
 
 String m5Status() {
   return String("\"") + (m5Aktiv ? "ok" : m5Verloren ? "verloren" : mqtt.connected() ? "warte" : brokerBekannt ? "getrennt" : "aus") + "\"";
@@ -55,7 +56,7 @@ void mqttNachricht(int groesse) {
 
 void mqttSetup() {
   if (!wlanOk) return;
-  suchUdp.begin(SUCH_PORT);
+  udpAn = suchUdp.begin(SUCH_PORT);
   mqtt.setId("giga-parcours1");
   mqtt.setKeepAliveInterval(60000);   // eigene Pausen (z. B. GitHub-Abfrage) duerfen die Verbindung nicht kappen
   mqtt.setConnectionTimeout(1500);
@@ -81,8 +82,12 @@ void mqttLoop() {
   static unsigned long letzterLauf = 0;
   if (millis() - letzterLauf > 400) m5Hb = millis();
   letzterLauf = millis();
+  // Der Giga hat nur wenige Netzwerk-Sockets (Webserver, Webclient, GitHub, MQTT).
+  // Die UDP-Suche deshalb nur offen halten, solange keine MQTT-Verbindung besteht.
+  if (mqtt.connected() && udpAn) { suchUdp.stop(); udpAn = false; }
+  if (!mqtt.connected() && !udpAn) { udpAn = suchUdp.begin(SUCH_PORT); }
   // Broker suchen bzw. Adresse aktuell halten
-  int n = suchUdp.parsePacket();
+  int n = udpAn ? suchUdp.parsePacket() : 0;
   if (n > 0) {
     char b[32]; int l = suchUdp.read(b, sizeof(b) - 1); b[max(0, l)] = 0;
     if (strncmp(b, "P1BROKER", 8) == 0) {

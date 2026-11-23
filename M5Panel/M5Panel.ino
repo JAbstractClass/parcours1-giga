@@ -1,4 +1,4 @@
-// Parcours 1 - Bedienpanel auf dem M5Stack Core (3 Tasten), Hochformat 240x320 - Tasten links
+// Parcours 1 - Bedienpanel auf dem M5Stack Core (3 Tasten, 320x240)
 //
 // Das M5Stack ist MQTT-Broker (PicoMQTT) und meldet sich per UDP-Broadcast im Hotspot.
 // Der Giga verbindet sich als Client: kein Internet, kein externer Server.
@@ -26,10 +26,6 @@ const uint16_t C_BG = 0x0841, C_CARD = 0x18E3, C_CARD2 = 0x2945, C_LINE = 0x3186
 #define F16 &fonts::efontJA_16
 #define F24 &fonts::efontJA_24
 #define FNUM &fonts::FreeSansBold18pt7b
-
-// Bildschirmdrehung: 0 = Hochformat, Inhalt 90 Grad nach links gedreht (Tasten links, A oben).
-// Steht das Bild auf dem Kopf, hier 2 eintragen (dann liegen die Tasten rechts, A unten).
-const int DREHUNG = 0;
 
 PicoMQTT::Server broker;
 WiFiUDP udp;
@@ -104,7 +100,35 @@ const unsigned long VERLOREN_MS = 6000;
 bool verbunden() { return S.da && millis() - S.t < VERLOREN_MS; }
 
 // ---------- MQTT ----------
-void senden(const char* thema, const String& text) { broker.publish(thema, text); }
+// Der Broker laeuft in einem eigenen Task auf Kern 0: wartet er auf einen langsamen Client,
+// bleibt die Anzeige trotzdem fluessig und die Tasten reagieren. Austausch ueber einen Mutex.
+SemaphoreHandle_t mtx;
+String neuStatus, neuEinst; bool hatStatus = false, hatEinst = false;
+struct Ausgang { String t, p; };
+std::vector<Ausgang> ausgang;
+void senden(const char* thema, const String& text) {
+  xSemaphoreTake(mtx, portMAX_DELAY); ausgang.push_back({thema, text}); xSemaphoreGive(mtx);
+}
+void mqttTask(void*) {
+  broker.socket_timeout_millis = 1000;   // nie laenger als 1 s auf einen halben Datensatz warten
+  broker.subscribe("p1/status", [](const char* topic, const char* payload) { xSemaphoreTake(mtx, portMAX_DELAY); neuStatus = payload; hatStatus = true; xSemaphoreGive(mtx); });
+  broker.subscribe("p1/einst", [](const char* topic, const char* payload) { xSemaphoreTake(mtx, portMAX_DELAY); neuEinst = payload; hatEinst = true; xSemaphoreGive(mtx); });
+  broker.begin();
+  udp.begin(47901);
+  unsigned long hbT = 0, suchT = 0;
+  for (;;) {
+    broker.loop();
+    unsigned long now = millis();
+    if (WiFi.status() == WL_CONNECTED) {
+      if (now - hbT >= 400) { hbT = now; broker.publish("p1/hb", "1"); }
+      if (now - suchT >= 1000) { suchT = now; udp.beginPacket(WiFi.broadcastIP(), 47900); udp.print("P1BROKER"); udp.endPacket(); }
+    }
+    std::vector<Ausgang> raus;
+    xSemaphoreTake(mtx, portMAX_DELAY); raus.swap(ausgang); xSemaphoreGive(mtx);
+    for (auto& a : raus) broker.publish(a.t, a.p);
+    vTaskDelay(1);
+  }
+}
 void befehl(char c) { senden("p1/cmd", String(c)); }
 void meldung(const String& t) { rueckText = t; rueckmeldung = millis(); }
 
@@ -134,50 +158,30 @@ void einstLesen(const char* payload) {
 }
 
 // ---------- Zeichnen: Grundelemente ----------
-// Hochformat 240x320 (Inhalt 90 Grad nach links gedreht). Die drei Tasten liegen dann an der
-// linken Kante: A oben, B Mitte, C unten. Ihre Funktion zeigt die Leiste links als Symbol.
-const int W = 240, H = 320, RAIL = 30, X0 = RAIL + 6, XR = W - 6, XM = (X0 + XR) / 2;
-const int TASTE_Y[3] = {68, 160, 252};     // Hoehe der Tasten A/B/C an der linken Kante
-
-// Symbole fuer die Tastenleiste
-void symbol(char s, int x, int y, uint16_t c) {
-  switch (s) {
-    case 'M': for (int i = -1; i <= 1; i++) cv.fillRoundRect(x - 7, y + i * 5 - 1, 14, 3, 1, c); break;          // Menue
-    case 'S': cv.fillTriangle(x - 4, y - 7, x - 4, y + 7, x + 7, y, c); break;                                     // Start
-    case 'T': cv.fillRoundRect(x - 6, y - 6, 12, 12, 2, c); break;                                                // Stopp
-    case 'K': cv.fillCircle(x, y - 3, 5, c); cv.fillTriangle(x - 5, y + 4, x + 5, y + 4, x, y + 10, c); break;  // Kugel frei
-    case 'Z': cv.fillTriangle(x + 5, y - 7, x + 5, y + 7, x - 6, y, c); break;                                     // Zurueck
-    case 'W': cv.fillTriangle(x - 7, y - 4, x + 7, y - 4, x, y + 7, c); break;                                     // Weiter
-    case 'O': cv.drawLine(x - 7, y, x - 2, y + 5, c); cv.drawLine(x - 2, y + 5, x + 7, y - 5, c);                  // OK / Ausfuehren
-              cv.drawLine(x - 7, y + 1, x - 2, y + 6, c); cv.drawLine(x - 2, y + 6, x + 7, y - 4, c); break;
-    case '-': cv.fillRect(x - 7, y - 1, 14, 3, c); break;
-    case '+': cv.fillRect(x - 7, y - 1, 14, 3, c); cv.fillRect(x - 1, y - 7, 3, 14, c); break;
-  }
-}
-// a/b/c: Symbol je Taste (0 = keine Funktion); rot = Not-Aus-Hinweis bei B (lang halten)
-void tastenLeiste(char a, char b, char c, bool bLangNotAus = false) {
-  cv.fillRect(0, 0, RAIL, H, C_BG);
-  cv.drawFastVLine(RAIL, 0, H, C_LINE);
-  char t[3] = {a, b, c};
+void tastenLeiste(const char* a, const char* b, const char* c) {
+  cv.fillRect(0, 216, 320, 24, C_BG);
+  cv.setFont(F16); cv.setTextDatum(middle_center);
+  const char* t[3] = {a, b, c}; const int x[3] = {68, 160, 252};
   for (int i = 0; i < 3; i++) {
-    if (!t[i]) continue;
-    int y = TASTE_Y[i];
-    cv.fillRoundRect(3, y - 24, RAIL - 6, 48, 10, C_CARD2);
-    symbol(t[i], RAIL / 2, y, C_INK);
-    if (i == 1 && bLangNotAus) cv.fillCircle(RAIL / 2, y + 18, 2, C_RED);
+    if (!t[i][0]) continue;
+    cv.fillRoundRect(x[i] - 44, 219, 88, 20, 10, C_CARD2);
+    cv.setTextColor(C_INK); cv.drawString(t[i], x[i], 229);
   }
 }
 
 void kopf(const char* titel) {
-  cv.fillRect(RAIL + 1, 0, W - RAIL - 1, 24, C_BG);
+  cv.fillRect(0, 0, 320, 24, C_BG);
   cv.setFont(F16); cv.setTextDatum(middle_left); cv.setTextColor(C_INK);
-  cv.drawString(titel, X0, 12);
+  cv.drawString(titel, 8, 12);
+  // Verbindung + WLAN rechts
   bool ok = verbunden();
   uint16_t f = !ok ? C_RED : S.ampel == 'r' ? C_RED : S.ampel == 'o' ? C_WARN : C_OK;
+  cv.fillCircle(250, 12, 5, f);
   int q = !ok ? 0 : S.rssi >= -55 ? 4 : S.rssi >= -67 ? 3 : S.rssi >= -75 ? 2 : 1;
-  for (int i = 0; i < 4; i++) cv.fillRect(XR - 22 + i * 6, 17 - i * 3 - 3, 4, i * 3 + 3, i < q ? C_INK : C_LINE);
-  cv.fillCircle(XR - 32, 12, 5, f);
-  cv.drawFastHLine(RAIL + 1, 24, W - RAIL - 1, C_LINE);
+  for (int i = 0; i < 4; i++) cv.fillRect(262 + i * 6, 17 - i * 3 - 3, 4, i * 3 + 3, i < q ? C_INK : C_LINE);
+  cv.setFont(F12); cv.setTextDatum(middle_right); cv.setTextColor(C_MUTED);
+  cv.drawString(ok ? "live" : "---", 316, 12);
+  cv.drawFastHLine(0, 24, 320, C_LINE);
 }
 
 // Linie mit Dicke (Strecke)
@@ -194,7 +198,7 @@ void bahn(int x0, int y0, int x1, int y1, bool an) {
 // Fahrweg wie ein Liniennetzplan: Aufzug links hoch, oben zur Stoppstelle, Weiche 1 teilt in
 // Looping/Vorbei, rechts runter zu Weiche 2, die teilt in Spirale/S-Kurve, unten zurueck zum Aufzug.
 void zeichneSchema() {
-  const int LX = X0 + 12, TOP = 54, BOT = 200, GX = LX + 46, W1X = LX + 82, RX = XR - 8, W2Y = 118, MX = LX + 24;
+  const int LX = 26, TOP = 44, BOT = 168, GX = 82, W1X = 118, RX = 290, W2Y = 112;
   bool l1 = S.weiche != 2, s2 = S.hebel != 2;
   // Aufzug
   cv.fillRoundRect(LX - 7, TOP - 4, 14, BOT - TOP + 8, 4, C_CARD2);
@@ -204,49 +208,55 @@ void zeichneSchema() {
   }
   // oben zur Stoppstelle und weiter zur Weiche 1
   bahn(LX, TOP, W1X, TOP, true);
+  // Stoppstelle (Schranke): zu = senkrecht, offen = hochgeklappt
   cv.fillRect(GX - 2, TOP - 16, 4, 6, C_MUTED);
   if (S.stopp) cv.fillRect(GX - 2, TOP - 22, 14, 4, C_OK);
   else cv.fillRect(GX - 2, TOP - 12, 4, 16, C_RED);
-  cv.fillCircle(GX - 13, TOP + 10, 4, S.kugel ? C_OK : C_FAINT);       // Sensor
-  if (S.kugel) cv.drawCircle(GX - 13, TOP + 10, 7, C_OK);
+  // Sensor vor der Stoppstelle
+  bool hit = S.kugel;
+  cv.fillCircle(GX - 14, TOP + 10, 4, hit ? C_OK : C_FAINT);
+  if (hit) cv.drawCircle(GX - 14, TOP + 10, 7, C_OK);
   // Weiche 1: oben Looping, unten Vorbei
-  bahn(W1X, TOP, RX - 16, TOP, l1);
-  cv.drawCircle(W1X + 44, TOP - 11, 10, l1 ? C_TRACK_ON : C_TRACK); if (l1) cv.drawCircle(W1X + 44, TOP - 11, 9, C_TRACK_ON);
-  bahn(W1X, TOP, W1X + 14, TOP + 26, !l1); bahn(W1X + 14, TOP + 26, RX - 16, TOP + 26, !l1);
-  bahn(RX - 16, TOP, RX, TOP + 13, l1); bahn(RX - 16, TOP + 26, RX, TOP + 13, !l1);
+  bahn(W1X, TOP, W1X + 18, TOP - 0, l1); bahn(W1X + 18, TOP, RX - 20, TOP, l1);
+  cv.drawCircle(190, TOP - 12, 11, l1 ? C_TRACK_ON : C_TRACK); if (l1) cv.drawCircle(190, TOP - 12, 10, C_TRACK_ON);
+  bahn(W1X, TOP, W1X + 18, TOP + 22, !l1); bahn(W1X + 18, TOP + 22, RX - 20, TOP + 22, !l1);
+  bahn(RX - 20, TOP, RX, TOP + 11, l1); bahn(RX - 20, TOP + 22, RX, TOP + 11, !l1);
   cv.fillCircle(W1X, TOP, 5, C_BLUE);
   // rechts runter zu Weiche 2
-  bahn(RX, TOP + 13, RX, W2Y, true);
+  bahn(RX, TOP + 11, RX, W2Y, true);
   cv.fillCircle(RX, W2Y, 5, C_BLUE);
-  // Weiche 2: oben Spirale (Zickzack), unten S-Kurve (Welle), nach links zurueck
-  bahn(RX, W2Y, RX - 14, W2Y + 12, s2); bahn(RX, W2Y, RX - 14, W2Y + 44, !s2);
-  uint16_t cs = s2 ? C_TRACK_ON : C_TRACK;
-  for (int x = RX - 14; x > MX + 14; x -= 16) {
-    cv.drawLine(x, W2Y + 12, x - 8, W2Y + 3, cs); cv.drawLine(x - 8, W2Y + 3, x - 16, W2Y + 12, cs);
-    if (s2) { cv.drawLine(x, W2Y + 13, x - 8, W2Y + 4, cs); cv.drawLine(x - 8, W2Y + 4, x - 16, W2Y + 13, cs); }
+  // Weiche 2: oben Spirale, unten S-Kurve, nach links zurueck
+  bahn(RX, W2Y, RX - 20, W2Y + 10, s2); bahn(RX, W2Y, RX - 20, W2Y + 34, !s2);
+  for (int i = 0; i < 6; i++) {                                     // Spirale als Zickzack
+    int x = RX - 30 - i * 20; uint16_t c = s2 ? C_TRACK_ON : C_TRACK;
+    cv.drawLine(x, W2Y + 10, x - 10, W2Y + 2, c); cv.drawLine(x - 10, W2Y + 2, x - 20, W2Y + 10, c);
+    if (s2) { cv.drawLine(x, W2Y + 11, x - 10, W2Y + 3, c); cv.drawLine(x - 10, W2Y + 3, x - 20, W2Y + 11, c); }
   }
-  for (int x = RX - 14; x > MX + 4; x -= 3) {
-    int y = W2Y + 44 + (int)(6 * sin((x - RX) / 14.0)), y2 = W2Y + 44 + (int)(6 * sin((x - 3 - RX) / 14.0));
-    cv.drawLine(x, y, x - 3, y2, s2 ? C_TRACK : C_TRACK_ON);
-    if (!s2) cv.drawLine(x, y + 1, x - 3, y2 + 1, C_TRACK_ON);
+  bahn(RX - 20, W2Y + 10, RX - 30, W2Y + 10, s2);
+  for (int x = RX - 30; x > 70; x -= 4) {                           // S-Kurve als Welle
+    int y = W2Y + 34 + (int)(6 * sin((x - RX) / 18.0));
+    int y2 = W2Y + 34 + (int)(6 * sin((x - 4 - RX) / 18.0));
+    cv.drawLine(x, y, x - 4, y2, s2 ? C_TRACK : C_TRACK_ON);
+    if (!s2) cv.drawLine(x, y + 1, x - 4, y2 + 1, C_TRACK_ON);
   }
-  bahn(MX + 14, W2Y + 12, MX, BOT, s2); bahn(MX + 4, W2Y + 44, MX, BOT, !s2);
-  bahn(MX, BOT, LX, BOT, true);
+  bahn(RX - 20, W2Y + 34, RX - 30, W2Y + 34, !s2);
+  bahn(RX - 150, W2Y + 10, 60, BOT, s2); bahn(70, W2Y + 34, 60, BOT, !s2);
+  bahn(60, BOT, LX, BOT, true);
   // Beschriftung
   cv.setFont(F12); cv.setTextDatum(top_left);
-  cv.setTextColor(l1 ? C_INK : C_FAINT); cv.drawString("Looping", W1X + 12, TOP + 5);
-  cv.setTextColor(!l1 ? C_INK : C_FAINT); cv.drawString("Vorbei", W1X + 22, TOP + 30);
-  cv.setTextColor(s2 ? C_INK : C_FAINT); cv.drawString("Spirale", MX + 30, W2Y + 16);
-  cv.setTextColor(!s2 ? C_INK : C_FAINT); cv.drawString("S-Kurve", MX + 30, W2Y + 54);
-  cv.setTextColor(C_MUTED); cv.drawString("Aufzug", LX + 10, BOT - 16); cv.drawString("Stopp", GX + 6, TOP - 30 < 28 ? 28 : TOP - 30);
-  // fahrende Kugel (nur Anzeige) auf dem aktiven Weg
+  cv.setTextColor(l1 ? C_INK : C_FAINT); cv.drawString("Looping", 150, TOP - 30 < 26 ? 26 : TOP - 30);
+  cv.setTextColor(!l1 ? C_INK : C_FAINT); cv.drawString("Vorbei", 150, TOP + 25);
+  cv.setTextColor(s2 ? C_INK : C_FAINT); cv.drawString("Spirale", 150, W2Y - 14);
+  cv.setTextColor(!s2 ? C_INK : C_FAINT); cv.drawString("S-Kurve", 150, W2Y + 42);
+  cv.setTextColor(C_MUTED); cv.drawString("Aufzug", LX + 12, BOT - 14); cv.drawString("Stopp", GX + 6, TOP + 6);
+  // fahrende Kugel (Anzeige) auf dem aktiven Weg
   if (S.aufzug) {
     float u = fmod(animT * 0.12f, 1.0f); int bx, by;
     if (u < 0.25f) { bx = LX; by = BOT - (int)((BOT - TOP) * u / 0.25f); }
-    else if (u < 0.45f) { bx = LX + (int)((RX - LX) * (u - 0.25f) / 0.2f); by = l1 || bx < W1X + 14 ? TOP : TOP + 26; }
-    else if (u < 0.55f) { bx = RX; by = TOP + 13 + (int)((W2Y - TOP - 13) * (u - 0.45f) / 0.1f); }
-    else if (u < 0.85f) { bx = RX - (int)((RX - MX) * (u - 0.55f) / 0.3f); by = s2 ? W2Y + 9 : W2Y + 44; }
-    else { bx = MX - (int)((MX - LX) * (u - 0.85f) / 0.15f); by = BOT; }
+    else if (u < 0.5f) { bx = LX + (int)((RX - LX) * (u - 0.25f) / 0.25f); by = l1 || bx < W1X + 18 ? TOP : TOP + 22; }
+    else if (u < 0.6f) { bx = RX; by = TOP + 11 + (int)((W2Y - TOP - 11) * (u - 0.5f) / 0.1f); }
+    else if (u < 0.9f) { bx = RX - (int)((RX - 60) * (u - 0.6f) / 0.3f); by = s2 ? W2Y + 8 : W2Y + 34; }
+    else { bx = 60 - (int)(34 * (u - 0.9f) / 0.1f); by = BOT; }
     cv.fillCircle(bx, by, 4, C_INK);
   }
 }
@@ -254,99 +264,90 @@ void zeichneSchema() {
 void zeichneHome() {
   kopf("Parcours 1");
   zeichneSchema();
+  // Zustandszeile
   bool ok = verbunden();
-  // Zustandskarte
   uint16_t bg = !ok || S.ampel == 'r' ? C_RED : S.ampel == 'o' ? C_WARN : C_CARD;
-  cv.fillRoundRect(X0 - 2, 214, XR - X0 + 4, 56, 10, bg);
-  cv.setTextDatum(top_left); cv.setTextColor(C_INK); cv.setFont(F16);
-  String z = !ok ? "Keine Verbindung" : S.notaus ? "NOT-AUS" : S.stau ? "Kugelstau" : S.ampel == 'r' ? "STOERUNG" : S.aufzug ? "In Betrieb" : "Bereit";
-  cv.drawString(z, X0 + 6, 222);
+  cv.fillRoundRect(4, 178, 312, 36, 8, bg);
+  cv.setTextDatum(middle_left); cv.setTextColor(C_INK); cv.setFont(F16);
+  String z = !ok ? "Keine Verbindung" : S.notaus ? "NOT-AUS" : S.stau ? "STOERUNG: Kugelstau" : S.ampel == 'r' ? "STOERUNG" : S.aufzug ? "In Betrieb" : "Bereit";
+  String u = !ok ? "Anlage im sicheren Zustand" : S.ampel != 'g' ? S.grund : String(S.weiche == 2 ? "Vorbei" : "Looping") + " / " + (S.hebel == 2 ? "S-Kurve" : "Spirale");
+  cv.drawString(z, 12, 188);
   cv.setFont(F12); cv.setTextColor(ok && S.ampel == 'g' ? C_MUTED : C_INK);
-  String u = !ok ? "sicherer Zustand" : S.ampel != 'g' ? S.grund : String(S.weiche == 2 ? "Vorbei" : "Looping") + " / " + (S.hebel == 2 ? "S-Kurve" : "Spirale");
-  if (u.length() > 22) u = u.substring(0, 21) + "...";
-  cv.drawString(u, X0 + 6, 246);
-  cv.setTextDatum(top_right); cv.setFont(FNUM); cv.setTextColor(C_INK);
-  cv.drawString(String(S.kugeln), XR - 6, 220);
-  cv.setFont(F12); cv.setTextColor(ok && S.ampel == 'g' ? C_MUTED : C_INK); cv.drawString("Kugeln", XR - 6, 252);
-  // zwei Infozeilen
-  cv.setFont(F12); cv.setTextDatum(top_left);
-  cv.setTextColor(S.kugel ? C_OK : C_MUTED);
-  cv.drawString(String("Sensor: ") + (S.styp ? (S.kugel ? "Kugel wartet" : "warte auf Stoss") : (S.kugel ? "Kugel da" : "leer")), X0, 280);
-  cv.setTextColor(C_MUTED);
-  cv.drawString(String("Licht ") + (S.leds ? "an" : "aus") + "  \xC2\xB7  Stopp " + (S.stopp ? "offen" : "zu"), X0, 298);
-  tastenLeiste('M', S.aufzug ? 'T' : 'S', 'K', true);
+  if (u.length() > 34) u = u.substring(0, 33) + "...";
+  cv.drawString(u, 12, 205);
+  cv.setTextDatum(middle_right); cv.setFont(FNUM); cv.setTextColor(C_INK);
+  cv.drawString(String(S.kugeln), 300, 192);
+  cv.setFont(F12); cv.setTextColor(ok && S.ampel == 'g' ? C_MUTED : C_INK); cv.drawString("Kugeln", 300, 208);
+  tastenLeiste("Menue", S.aufzug ? "Stopp" : "Start", "Kugel");
 }
 
 // Liste mit Auswahl (Menue, Steuerung, Parameter)
 void liste(const char* titel, int n, std::function<void(int, String&, String&, uint16_t&)> zeile) {
   kopf(titel);
-  const int RH = 32, Y0 = 30, SICHT = 9;
+  const int H = 30, Y0 = 30, SICHT = 6;
   if (sel < scroll) scroll = sel;
   if (sel >= scroll + SICHT) scroll = sel - SICHT + 1;
   for (int i = scroll; i < min(n, scroll + SICHT); i++) {
-    int y = Y0 + (i - scroll) * RH;
+    int y = Y0 + (i - scroll) * H;
     String a, b; uint16_t fb = C_MUTED; zeile(i, a, b, fb);
     bool s = i == sel;
-    cv.fillRoundRect(X0 - 2, y, XR - X0 + 4, RH - 4, 8, s ? C_BLUE : C_CARD);
-    cv.setFont(F12); cv.setTextDatum(middle_left); cv.setTextColor(C_INK); cv.drawString(a, X0 + 6, y + 14);
-    cv.setTextDatum(middle_right); cv.setTextColor(s ? C_INK : fb); cv.drawString(b, XR - 6, y + 14);
+    cv.fillRoundRect(4, y, 312, H - 3, 8, s ? C_BLUE : C_CARD);
+    cv.setFont(F16); cv.setTextDatum(middle_left); cv.setTextColor(C_INK); cv.drawString(a, 14, y + 13);
+    cv.setTextDatum(middle_right); cv.setTextColor(s ? C_INK : fb); cv.drawString(b, 306, y + 13);
   }
-  if (n > SICHT) {
-    int h = 286 * SICHT / n, y = 30 + (286 - h) * scroll / max(1, n - SICHT);
-    cv.fillRect(W - 3, y, 3, h, C_FAINT);
+  if (n > SICHT) {                                   // Scrollbalken
+    int h = 180 * SICHT / n, y = 30 + (180 - h) * scroll / max(1, n - SICHT);
+    cv.fillRect(317, y, 3, h, C_FAINT);
   }
 }
 
 void zeichneMenu() {
   liste("Menue", N_MENU, [](int i, String& a, String& b, uint16_t& f) { a = MENU_ITEMS[i]; b = ">"; });
-  tastenLeiste('Z', 'W', 'O');
+  tastenLeiste("Zurueck", "Weiter", "OK");
 }
 
 // ---------- Status aller Ein-/Ausgaenge ----------
-// zweizeilig: Bezeichnung klein oben, Wert rechts
 void zeile2(int y, const String& a, const String& b, uint16_t f = C_INK) {
-  cv.setFont(F12); cv.setTextDatum(middle_left); cv.setTextColor(C_MUTED); cv.drawString(a, X0, y);
-  cv.setFont(F16); cv.setTextDatum(middle_right); cv.setTextColor(f); cv.drawString(b, XR, y);
-  cv.drawFastHLine(X0, y + 14, XR - X0, C_CARD);
+  cv.setFont(F16); cv.setTextDatum(middle_left); cv.setTextColor(C_MUTED); cv.drawString(a, 12, y);
+  cv.setTextDatum(middle_right); cv.setTextColor(f); cv.drawString(b, 308, y);
 }
 const int STATUS_SEITEN = 3;
 void zeichneStatus() {
-  const char* t[] = {"Ausgaenge 1/3", "Eingaenge 2/3", "System 3/3"};
+  const char* t[] = {"Ausgaenge (1/3)", "Eingaenge & Sensor (2/3)", "System (3/3)"};
   kopf(t[statSeite]);
-  int y = 44, d = 32;
+  int y = 42, d = 26;
   if (statSeite == 0) {
-    zeile2(y, "Aufzug (M2)", S.aufzug ? "laeuft" : "aus", S.aufzug ? C_OK : C_INK); y += d;
-    zeile2(y, "Weiche 1 (M3)", S.weiche == 2 ? "Vorbei" : "Looping"); y += d;
-    zeile2(y, "Weiche 2 (M4)", S.hebel == 2 ? "S-Kurve" : "Spirale"); y += d;
-    zeile2(y, "Stoppstelle (Servo D2)", S.stopp ? "offen" : "zu", S.stopp ? C_OK : C_INK); y += d;
-    zeile2(y, "Licht (M1)", S.leds ? "an" : "aus"); y += d;
-    zeile2(y, "Lautsprecher", S.weihnacht ? "spielt" : "still"); y += d;
+    zeile2(y, "Aufzug  M2", S.aufzug ? "laeuft" : "aus", S.aufzug ? C_OK : C_INK); y += d;
+    zeile2(y, "Weiche 1  M3", S.weiche == 2 ? "Vorbei" : "Looping"); y += d;
+    zeile2(y, "Weiche 2  M4", S.hebel == 2 ? "S-Kurve" : "Spirale"); y += d;
+    zeile2(y, "Stoppstelle  Servo D2", S.stopp ? "offen" : "zu", S.stopp ? C_OK : C_INK); y += d;
+    zeile2(y, "Licht  M1", S.leds ? "an" : "aus"); y += d;
+    zeile2(y, "Lautsprecher  P15/M6", S.weihnacht ? "spielt" : "still"); y += d;
     const char* lf = S.lampe == 'a' ? "Auto" : S.lampe == 'g' ? "Gruen" : S.lampe == 'o' ? "Orange" : S.lampe == 'r' ? "Rot" : S.lampe == 'b' ? "Blau" : S.lampe == 'w' ? "Weiss" : "Aus";
-    zeile2(y, "Statuslampe (A0-A2)", lf);
+    zeile2(y, "Statuslampe  A0-A2", lf);
   } else if (statSeite == 1) {
-    zeile2(y, S.styp ? "Shock-Sensor (A6)" : "Reflex-Sensor (A6)", S.kugel ? "Kugel" : "leer", S.kugel ? C_OK : C_INK); y += d;
+    zeile2(y, S.styp ? "Shock-Sensor  A6" : "Reflex-Sensor  A6", S.kugel ? "Kugel" : "leer", S.kugel ? C_OK : C_INK); y += d;
     zeile2(y, "Pegel", S.pegel); y += d;
     zeile2(y, "Kontakte gesamt", String(S.flanken)); y += d;
     zeile2(y, "Sensorpruefung", S.sensor ? "aktiv" : "aus"); y += d;
-    String tl = S.taster.length() == 3 ? S.taster : "000";
-    zeile2(y, "Taster links", tl[0] == '1' ? "gedrueckt" : "frei"); y += d;
-    zeile2(y, "Taster Mitte", tl[1] == '1' ? "gedrueckt" : "frei"); y += d;
-    zeile2(y, "Taster rechts", tl[2] == '1' ? "gedrueckt" : "frei"); y += d;
+    String tl = S.taster.length() == 3 ? S.taster : "---";
+    zeile2(y, "Taster L / M / R", String(tl[0] == '1' ? "GEDR." : "frei") + " / " + (tl[1] == '1' ? "GEDR." : "frei") + " / " + (tl[2] == '1' ? "GEDR." : "frei")); y += d;
     zeile2(y, "Kugeln gezaehlt", String(S.kugeln));
   } else {
     zeile2(y, "Anlage", S.ampel == 'g' ? "alles ok" : S.ampel == 'o' ? "kein Internet" : "Stoerung", S.ampel == 'g' ? C_OK : S.ampel == 'o' ? C_WARN : C_RED); y += d;
     String g = S.grund.length() ? S.grund : "-"; if (g.length() > 30) g = g.substring(0, 29) + "...";
-    cv.setFont(F12); cv.setTextDatum(middle_left); cv.setTextColor(C_MUTED); cv.drawString(g, X0, y - 8); y += d - 8;
+    cv.setFont(F12); cv.setTextDatum(middle_left); cv.setTextColor(C_MUTED); cv.drawString(g, 12, y - 6); y += d - 8;
     zeile2(y, "WLAN Giga", String(S.rssi) + " dBm"); y += d;
     zeile2(y, "WLAN M5Stack", String(WiFi.RSSI()) + " dBm"); y += d;
     zeile2(y, "Firmware Giga", S.version); y += d;
     uint32_t u = S.uptime; char b[24]; snprintf(b, sizeof(b), "%lu:%02lu:%02lu", (unsigned long)(u / 3600), (unsigned long)(u / 60 % 60), (unsigned long)(u % 60));
     zeile2(y, "Giga laeuft seit", b);
   }
-  tastenLeiste('Z', 'W', 0);
+  tastenLeiste("Zurueck", "Weiter", "");
 }
 
 // ---------- Manuell steuern ----------
+struct Steuer { const char* n; };
 const char* STEUER_TXT[] = {"Aufzug", "Kugel freigeben", "Weiche 1", "Weiche 2", "Servo-Test", "Licht", "Statuslampe", "Weihnachtsmodus", "NOT-AUS"};
 const int N_STEUER = 9;
 const char LAMPEN[] = {'a', 'g', 'o', 'r', 'b', 'w', '0'};
@@ -358,118 +359,112 @@ void zeichneSteuer() {
       case 1: b = S.stopp ? "offen" : "zu"; break;
       case 2: b = S.weiche == 2 ? "Vorbei" : "Looping"; break;
       case 3: b = S.hebel == 2 ? "S-Kurve" : "Spirale"; break;
-      case 4: b = "auf+zu"; break;
+      case 4: b = "0-180" "\xC2\xB0"; break;
       case 5: b = S.leds ? "an" : "aus"; break;
       case 6: { const char* n[] = {"Auto", "Gruen", "Orange", "Rot", "Blau", "Weiss", "Aus"}; int k = 0; for (int j = 0; j < 7; j++) if (LAMPEN[j] == S.lampe) k = j; b = n[k]; break; }
       case 7: b = !S.lied ? "kein Lied" : S.weihnacht ? "an" : "aus"; break;
       case 8: b = S.notaus ? "aktiv" : ""; f = C_RED; break;
     }
   });
-  tastenLeiste('Z', 'W', 'O');
+  tastenLeiste("Zurueck", "Weiter", "Ausfuehren");
 }
 void steuerAusfuehren(int i) {
   const char c[] = {'a', 's', 'w', 'h', 'v', 'l', 0, 'j', 'x'};
-  if (i == 6) { int k = 0; for (int j = 0; j < 7; j++) if (LAMPEN[j] == S.lampe) k = j; senden("p1/lampe", String(LAMPEN[(k + 1) % 7])); meldung("Lampe gewechselt"); return; }
+  if (i == 6) { int k = 0; for (int j = 0; j < 7; j++) if (LAMPEN[j] == S.lampe) k = j; senden("p1/lampe", String(LAMPEN[(k + 1) % 7])); meldung("Statuslampe gewechselt"); return; }
   befehl(c[i]);
-  meldung(i == 8 ? "NOT-AUS" : String(STEUER_TXT[i]));
+  meldung(i == 8 ? "NOT-AUS gesendet" : String(STEUER_TXT[i]) + " gesendet");
 }
 
 // ---------- Parameter ----------
 void zeichneParam() {
-  liste("Parameter", NP, [](int i, String& a, String& b, uint16_t& f) { a = P[i].n; b = P[i].da ? wertText(P[i], P[i].v) : "?"; if (P[i].da && P[i].v != P[i].d) f = C_BLUE; });
-  tastenLeiste('Z', 'W', 'O');
+  liste("Betriebsparameter", NP, [](int i, String& a, String& b, uint16_t& f) { a = P[i].n; b = P[i].da ? wertText(P[i], P[i].v) : "?"; if (P[i].da && P[i].v != P[i].d) f = C_BLUE; });
+  tastenLeiste("Zurueck", "Weiter", "Aendern");
 }
 void zeichneEdit() {
   Param& p = P[sel];
   kopf(p.n);
-  cv.setTextDatum(middle_center); cv.setTextColor(C_INK); cv.setFont(F24);
-  cv.drawString(wertText(p, editWert), XM, 110);
-  int bw = XR - X0, x = X0, y = 160;
+  cv.setTextDatum(middle_center); cv.setTextColor(C_INK); cv.setFont(F24); cv.drawString(wertText(p, editWert), 160, 88);
+  // Balken
+  int bw = 280, x = 20, y = 130;
   cv.fillRoundRect(x, y, bw, 10, 5, C_CARD2);
   cv.fillRoundRect(x, y, max(10, bw * (editWert - p.mi) / max(1, p.ma - p.mi)), 10, 5, C_BLUE);
   cv.setFont(F12); cv.setTextColor(C_MUTED);
   cv.setTextDatum(top_left); cv.drawString(wertText(p, p.mi), x, y + 16);
   cv.setTextDatum(top_right); cv.drawString(wertText(p, p.ma), x + bw, y + 16);
-  cv.setTextDatum(top_center);
-  cv.drawString("Startwert: " + wertText(p, p.d), XM, 210);
-  cv.drawString("A lang halten = abbrechen", XM, 230);
-  tastenLeiste('-', '+', 'O');
+  cv.setTextDatum(top_center); cv.drawString("Start: " + wertText(p, p.d) + "   (A lang = abbrechen)", 160, 172);
+  tastenLeiste("-", "+", "Speichern");
 }
 
 // ---------- Statistik ----------
 const int STAT_SEITEN = 3;
 void zeichneStats() {
-  const char* t[] = {"Kugeln/min 1/3", "WLAN 5 min 2/3", "Uebersicht 3/3"};
+  const char* t[] = {"Kugeln pro Minute (1/3)", "WLAN-Signal 5 min (2/3)", "Uebersicht (3/3)"};
   kopf(t[statSeite]);
   if (statSeite == 0) {
     int mx = 1; for (int i = 0; i < MINUTEN; i++) mx = max(mx, (int)kugelnProMin[i]);
     uint32_t jetzt = S.kugeln - kugelnMinBasis; mx = max(mx, (int)jetzt);
-    const int GX = X0 + 18, Y1 = 270, GH = 220, BW = (XR - GX) / (MINUTEN + 1);
-    cv.drawFastHLine(GX, Y1, XR - GX, C_LINE);
-    cv.setFont(F12); cv.setTextColor(C_MUTED); cv.setTextDatum(middle_right); cv.drawString(String(mx), GX - 3, Y1 - GH); cv.drawString("0", GX - 3, Y1);
+    const int X0 = 30, Y1 = 190, H = 140, BW = 17;
+    cv.drawFastHLine(X0, Y1, 280, C_LINE);
+    cv.setFont(F12); cv.setTextColor(C_MUTED); cv.setTextDatum(middle_right); cv.drawString(String(mx), X0 - 4, Y1 - H);
+    cv.drawString("0", X0 - 4, Y1);
     for (int i = 0; i < MINUTEN; i++) {
-      int k = (minIdx + 1 + i) % MINUTEN, v = kugelnProMin[k], h = GH * v / mx;
-      cv.fillRect(GX + 2 + i * BW, Y1 - h, BW - 2, h, C_TRACK_ON);
+      int k = (minIdx + 1 + i) % MINUTEN, v = kugelnProMin[k];
+      int h = H * v / mx; cv.fillRect(X0 + 4 + i * BW, Y1 - h, BW - 4, h, C_TRACK_ON);
     }
-    int h = GH * (int)jetzt / mx; cv.fillRect(GX + 2 + MINUTEN * BW, Y1 - h, BW - 2, h, C_BLUE);
-    cv.setTextDatum(top_left); cv.drawString("-15 min", GX, Y1 + 6); cv.setTextDatum(top_right); cv.drawString("jetzt", XR, Y1 + 6);
+    int h = H * (int)jetzt / mx; cv.fillRect(X0 + 4 + MINUTEN * BW, Y1 - h, BW - 4, h, C_BLUE);
+    cv.setTextDatum(top_left); cv.drawString("-15 min", X0, Y1 + 4); cv.setTextDatum(top_right); cv.drawString("jetzt", 310, Y1 + 4);
   } else if (statSeite == 1) {
-    const int GX = X0 + 22, GY = 44, GW = XR - GX, GH = 220;
+    const int X0 = 40, Y0 = 40, W = 270, H = 140;
     cv.setFont(F12); cv.setTextColor(C_MUTED); cv.setTextDatum(middle_right);
-    for (int db = -30; db >= -90; db -= 20) { int y = GY + GH * (-30 - db) / 60; cv.drawFastHLine(GX, y, GW, C_LINE); cv.drawString(String(db), GX - 3, y); }
+    for (int db = -30; db >= -90; db -= 20) { int y = Y0 + H * (-30 - db) / 60; cv.drawFastHLine(X0, y, W, C_LINE); cv.drawString(String(db), X0 - 4, y); }
     int px = -1, py = 0;
     for (int i = 0; i < RSSI_N; i++) {
       int v = rssiHist[(rssiIdx + i) % RSSI_N]; if (v == 0) { px = -1; continue; }
-      int x = GX + GW * i / (RSSI_N - 1), y = GY + GH * constrain(-30 - v, 0, 60) / 60;
+      int x = X0 + W * i / (RSSI_N - 1), y = Y0 + H * constrain(-30 - v, 0, 60) / 60;
       if (px >= 0) { cv.drawLine(px, py, x, y, C_TRACK_ON); cv.drawLine(px, py + 1, x, y + 1, C_TRACK_ON); }
       px = x; py = y;
     }
-    cv.setTextDatum(top_left); cv.drawString("Giga in dBm, hoeher = besser", X0, GY + GH + 10);
+    cv.setTextDatum(top_left); cv.drawString("Giga, dBm (hoeher = besser)", X0, Y0 + H + 6);
   } else {
-    int y = 44, d = 34; uint32_t up = max<uint32_t>(1, S.uptime);
+    int y = 42, d = 26; uint32_t up = max<uint32_t>(1, S.uptime);
     char b[32];
     zeile2(y, "Kugeln gesamt", String(S.kugeln)); y += d;
-    snprintf(b, sizeof(b), "%.1f", S.lauf > 0 ? S.kugeln * 60.0 / S.lauf : 0.0); zeile2(y, "Kugeln/min im Betrieb", b); y += d;
-    snprintf(b, sizeof(b), "%lu:%02lu", (unsigned long)(S.lauf / 60), (unsigned long)(S.lauf % 60)); zeile2(y, "Aufzug gelaufen (min)", b); y += d;
+    snprintf(b, sizeof(b), "%.1f", S.lauf > 0 ? S.kugeln * 60.0 / S.lauf : 0.0); zeile2(y, "Kugeln pro Minute Betrieb", b); y += d;
+    snprintf(b, sizeof(b), "%lu:%02lu min", (unsigned long)(S.lauf / 60), (unsigned long)(S.lauf % 60)); zeile2(y, "Aufzug gelaufen", b); y += d;
     snprintf(b, sizeof(b), "%d %%", (int)(S.lauf * 100 / up)); zeile2(y, "Auslastung", b); y += d;
-    zeile2(y, "Stoerungen", String(stoerungen), stoerungen ? C_WARN : C_INK); y += d;
+    zeile2(y, "Stoerungen gemeldet", String(stoerungen), stoerungen ? C_WARN : C_INK); y += d;
     zeile2(y, "Verbindungsabbrueche", String(abbrueche), abbrueche ? C_WARN : C_INK);
   }
-  tastenLeiste('Z', 'W', 0);
+  tastenLeiste("Zurueck", "Weiter", "");
 }
 
 void zeichneInfo() {
-  kopf("Info");
-  int y = 44, d = 34;
+  kopf("Info & Verbindung");
+  int y = 42, d = 26;
   zeile2(y, "M5Stack (Broker)", WiFi.localIP().toString()); y += d;
   zeile2(y, "WLAN", WiFi.SSID()); y += d;
   zeile2(y, "Giga", S.ip.length() ? S.ip : "-"); y += d;
-  zeile2(y, "Giga sieht M5", S.m5.length() ? S.m5 : "-"); y += d;
-  zeile2(y, "Verbunden seit", verbunden() ? String((millis() - verbundenSeit) / 1000) + " s" : "-"); y += d;
-  cv.setFont(F12); cv.setTextDatum(middle_left); cv.setTextColor(C_MUTED);
-  cv.drawString("Web: http://" + (S.ip.length() ? S.ip : String("...")), X0, y);
-  tastenLeiste('Z', 0, 0);
+  zeile2(y, "Web-Bedienung", S.ip.length() ? "http://" + S.ip : "-"); y += d;
+  zeile2(y, "Giga sieht M5 als", S.m5.length() ? S.m5 : "-"); y += d;
+  zeile2(y, "Verbunden seit", verbunden() ? String((millis() - verbundenSeit) / 1000) + " s" : "-");
+  tastenLeiste("Zurueck", "", "");
 }
 
 // Grosse Warnung bei Verbindungsverlust
 void zeichneVerloren() {
   cv.fillScreen(C_RED);
   cv.setTextColor(C_INK); cv.setTextDatum(middle_center);
-  cv.setFont(F24);
-  if (S.da) { cv.drawString("Verbindung", XM, 80); cv.drawString("verloren", XM, 108); }
-  else cv.drawString("Suche Anlage", XM, 94);
+  cv.setFont(F24); cv.drawString(S.da ? "Verbindung verloren" : "Suche Anlage ...", 160, 70);
   cv.setFont(F16);
   if (S.da) {
-    cv.drawString("Anlage ist im", XM, 160); cv.drawString("sicheren Zustand:", XM, 180);
-    cv.drawString("Motoren aus,", XM, 204); cv.drawString("Stoppstelle zu.", XM, 224);
-    cv.setFont(F12); cv.drawString("seit " + String((millis() - S.t) / 1000) + " s keine Daten", XM, 260);
+    cv.drawString("Die Anlage ist im sicheren Zustand:", 160, 112);
+    cv.drawString("Motoren aus, Stoppstelle zu.", 160, 134);
+    cv.drawString("Seit " + String((millis() - S.t) / 1000) + " s keine Daten vom Giga", 160, 166);
   } else {
-    cv.drawString(WiFi.status() == WL_CONNECTED ? "WLAN ok" : "Verbinde WLAN ...", XM, 150);
-    cv.setFont(F12);
-    cv.drawString(WiFi.status() == WL_CONNECTED ? "warte auf den Giga" : String(WLAN_SSID), XM, 176);
-    if (WiFi.status() == WL_CONNECTED) cv.drawString("Broker " + WiFi.localIP().toString(), XM, 196);
+    cv.drawString(WiFi.status() == WL_CONNECTED ? "WLAN ok - warte auf den Giga" : "Verbinde mit WLAN ...", 160, 120);
+    cv.setFont(F12); cv.drawString(WiFi.status() == WL_CONNECTED ? "Broker: " + WiFi.localIP().toString() : String(WLAN_SSID), 160, 146);
   }
-  tastenLeiste('M', 0, 0);
+  tastenLeiste("Menue", "", "");
 }
 
 // ---------- Tasten ----------
@@ -524,28 +519,30 @@ void tasten() {
 void setup() {
   auto cfg = M5.config();
   M5.begin(cfg);
-  M5.Display.setRotation(DREHUNG);
+  M5.Display.setRotation(0);   // bei diesem M5Stack Core: 0 = Querformat 320x240, Tasten unten
   M5.Speaker.setVolume(140);
+  M5.BtnA.setHoldThresh(1000); M5.BtnB.setHoldThresh(1500); M5.BtnC.setHoldThresh(1000);   // NOT-AUS nur bei bewusst langem Druck
   cv.setColorDepth(16);
-  if (!cv.createSprite(W, H)) { cv.setColorDepth(8); cv.createSprite(W, H); }
+  if (!cv.createSprite(320, 240)) { cv.setColorDepth(8); cv.createSprite(320, 240); }
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
   WiFi.begin(WLAN_SSID, WLAN_PASS);
-  broker.subscribe("p1/status", [](const char* topic, const char* payload) { statusLesen(payload); });
-  broker.subscribe("p1/einst", [](const char* topic, const char* payload) { einstLesen(payload); });
-  broker.begin();
-  udp.begin(47901);
+  mtx = xSemaphoreCreateMutex();
+  xTaskCreatePinnedToCore(mqttTask, "mqtt", 12288, nullptr, 2, nullptr, 0);
 }
 
 void loop() {
-  broker.loop();
+  // neue Daten vom MQTT-Task uebernehmen
+  String st, ei; bool s1 = false, s2 = false;
+  xSemaphoreTake(mtx, portMAX_DELAY);
+  if (hatStatus) { st = neuStatus; hatStatus = false; s1 = true; }
+  if (hatEinst) { ei = neuEinst; hatEinst = false; s2 = true; }
+  xSemaphoreGive(mtx);
+  if (s1) statusLesen(st.c_str());
+  if (s2) einstLesen(ei.c_str());
   tasten();
   unsigned long now = millis();
-  static unsigned long hbT = 0, suchT = 0, zeichenT = 0;
-  if (WiFi.status() == WL_CONNECTED) {
-    if (now - hbT >= 400) { hbT = now; senden("p1/hb", "1"); }
-    if (now - suchT >= 1000) { suchT = now; udp.beginPacket(WiFi.broadcastIP(), 47900); udp.print("P1BROKER"); udp.endPacket(); }
-  }
+  static unsigned long zeichenT = 0;
   // Verbindung / Stoerungen melden
   bool ok = verbunden();
   if (ok && !warVerbunden) { verbundenSeit = now; senden("p1/get", "1"); }
@@ -576,15 +573,15 @@ void loop() {
     case P_INFO: zeichneInfo(); break;
   }
   if (!ok && seite != P_HOME && S.da) {               // auch in Menues: rote Leiste
-    cv.fillRect(RAIL + 1, 0, W - RAIL - 1, 24, C_RED); cv.setFont(F12); cv.setTextColor(C_INK); cv.setTextDatum(middle_center);
-    cv.drawString("Verbindung verloren", XM, 12);
+    cv.fillRect(0, 0, 320, 24, C_RED); cv.setFont(F16); cv.setTextColor(C_INK); cv.setTextDatum(middle_center);
+    cv.drawString("Verbindung verloren - Anlage gestoppt", 160, 12);
   } else if (ok && S.ampel == 'r' && seite != P_HOME) {
-    cv.fillRect(RAIL + 1, 0, W - RAIL - 1, 24, C_RED); cv.setFont(F12); cv.setTextColor(C_INK); cv.setTextDatum(middle_center);
-    String g = S.grund; if (g.length() > 26) g = g.substring(0, 25) + "..."; cv.drawString(g, XM, 12);
+    cv.fillRect(0, 0, 320, 24, C_RED); cv.setFont(F12); cv.setTextColor(C_INK); cv.setTextDatum(middle_center);
+    String g = S.grund; if (g.length() > 44) g = g.substring(0, 43) + "..."; cv.drawString(g, 160, 12);
   }
   if (now - rueckmeldung < 1200) {                   // kurze Rueckmeldung nach einer Aktion
-    cv.setFont(F16); int w = min(W - RAIL - 8, (int)cv.textWidth(rueckText) + 28);
-    cv.fillRoundRect(XM - w / 2, 140, w, 34, 17, C_INK); cv.setTextColor(C_BG); cv.setTextDatum(middle_center); cv.drawString(rueckText, XM, 157);
+    cv.setFont(F16); int w = cv.textWidth(rueckText) + 28;
+    cv.fillRoundRect(160 - w / 2, 92, w, 34, 17, C_INK); cv.setTextColor(C_BG); cv.setTextDatum(middle_center); cv.drawString(rueckText, 160, 109);
   }
   cv.pushSprite(0, 0);
 }
