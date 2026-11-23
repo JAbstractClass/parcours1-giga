@@ -298,6 +298,7 @@ body.xmas #stage{background:radial-gradient(90% 70% at 50% 40%,#18233a,var(--bg)
   <div class="card" id="sen_c">
    <div class="sen" id="sen"><span class="led"></span><span class="tx"><b id="sen_s">Kugelsensor</b><small id="sen_p">–</small></span><span class="n"><b id="sen_n">0</b><small>Kugeln durch</small></span></div>
    <canvas id="sen_t" title="Sensor, letzte 20 Sekunden"></canvas>
+   <div class="rng" id="emp_r" style="padding-top:10px"><label><span>Empfindlichkeit</span><output id="emp_o">–</output></label><input type="range" id="emp" min="1" max="10" step="1"></div>
   </div>
 
   <div class="card">
@@ -471,7 +472,9 @@ function render(s){
   {const e=$('sen');e.classList.toggle('on',!!s.kugel);e.classList.toggle('off',!s.sensor);
    const shock=s.styp===1,hit=shock&&s.stoss<700;e.classList.toggle('hit',hit);
    $('sen_s').textContent=shock?(hit?'Stoß! Kugel angekommen':s.kugel?'Kugel wartet':'Warte auf Kugel'):(s.kugel?'Kugel erkannt':'Keine Kugel');
-   $('sen_p').textContent=(shock?'Shock · ':'Reflex · ')+(s.pegel||'')+(s.sensor?' · Automatik prüft':' · Prüfung aus');
+   if(s.flanken!==undefined){const now=performance.now();if(P1.fl){const d=(s.flanken-P1.fl[0])/((now-P1.fl[1])/1000);P1.fr=Math.round(d);}P1.fl=[s.flanken,now];}
+   $('sen_p').textContent=(shock?'Shock · ':'Reflex · ')+(s.pegel||'')+(shock&&P1.fr!==undefined?' · '+P1.fr+' Zucker/s':'')+(s.sensor?' · Automatik prüft':' · Prüfung aus');
+   $('emp_r').style.display=shock?'':'none';
    const nb=$('sen_n');if(nb.textContent!==String(s.kugeln)){nb.textContent=s.kugeln;nb.classList.remove('bump');nb.offsetWidth;nb.classList.add('bump');}
    hsSet('k',!!s.kugel||hit,hit?'Stoß':s.kugel?'Kugel':'leer');SEN.push([performance.now(),!!s.kugel||hit]);}
   B.classList.toggle('xmas',!!s.weihnacht);$('xm_b').classList.toggle('on',!!s.weihnacht);
@@ -544,7 +547,7 @@ const ACT=[
    ['stopp_ms','Offen für',30,1500,10,ms],['stopp_tempo','Tempo',0,30,1,v=>v?v*100+' °/s':'maximal'],
    ['stopp_auto','Automatisch freigeben, wenn der Aufzug läuft'],['stopp_takt','Abstand der Freigaben',1000,30000,500,sec],
    ['sensor_an','Automatik gibt nur frei, wenn der Sensor eine Kugel meldet'],['sensor_typ','Erschütterungssensor (Shock) statt Reflexsensor'],
-   ['sensor_sperr','Shock: Mindestabstand zwischen zwei Kugeln',20,2000,10,ms],['sensor_inv','Reflex: Signal umkehren'],
+   ['sensor_empf','Shock: Empfindlichkeit',1,10,1,v=>v===10?'10 · maximal':v+''],['sensor_sperr','Shock: Mindestabstand zwischen zwei Kugeln',10,2000,10,ms],['sensor_inv','Reflex: Signal umkehren'],
    ['stopp_nach','Reflex: nach dem Durchrollen noch offen',0,1000,10,ms]]},
  {t:'Lautsprecher',d:'P15 über 470 Ω oder lauter an M6 über 100 Ω',test:['j','An / Aus'],p:[['laut','Lautstärke',0,100,5,v=>v+' %'],['boost','Verstärkung (lauter, etwas verzerrter)',1,10,1,v=>v===1?'aus':v+'×']]},
  {t:'Licht',d:'Rainbow-LEDs an M1',test:['l','An / Aus'],p:[['led_blink','Status als Blinkcode zeigen']]}
@@ -577,7 +580,7 @@ function cfgBuild(){
 }
 function cfgFill(j){
   for(const k in j)if(Array.isArray(j[k]))CFG[k]=j[k][0];
-  if(P1.volSet)P1.volSet(CFG.laut);
+  if(P1.volSet)P1.volSet(CFG.laut);if(P1.empSet)P1.empSet(CFG.sensor_empf);
   if(CFG.stopp_takt)TAKT=CFG.stopp_takt;
   let chg=0;
   document.querySelectorAll('#cfg_l [data-k]').forEach(e=>{const v=j[e.dataset.k];if(!v)return;const c=v[0]!==v[1];chg+=c;
@@ -652,6 +655,12 @@ $('up_f').onchange=async e=>{
  i.oninput=()=>{show();if(!tm)tm=setTimeout(()=>{tm=0;send();},150);};
  i.onchange=()=>{show();send();};
  P1.volSet=v=>{if(document.activeElement!==i&&v!==undefined){i.value=v;last=v;show();}};}
+/* Empfindlichkeit direkt auf der Sensorkarte */
+{const i=$('emp'),o=$('emp_o');let tm=0,last=-1;
+ const show=()=>{o.textContent=i.value==10?'10 · maximal':i.value;i.style.setProperty('--p',((i.value-1)/9*100)+'%');};
+ const send=()=>{if(+i.value!==last){last=+i.value;fetch('/einst?k=sensor_empf&v='+last,{cache:'no-store'}).catch(()=>{});}};
+ i.oninput=()=>{show();if(!tm)tm=setTimeout(()=>{tm=0;send();},150);};i.onchange=()=>{show();send();};
+ P1.empSet=v=>{if(document.activeElement!==i&&v!==undefined){i.value=v;last=v;show();}};}
 /* ---------- Schnee ---------- */
 (()=>{
   const c=$('snow'),g=c.getContext('2d');let W=0,H=0,F=[];

@@ -88,7 +88,9 @@ int SENSOR_AN          = 1;     // 1 = Stoppstelle gibt nur frei, wenn der Senso
 int SENSOR_INV         = 0;     // 1, falls der Sensor "Kugel" und "keine Kugel" vertauscht meldet
 int STOPP_NACHLAUF_MS  = 120;   // mit Sensor: so lange nach dem Durchrollen noch offen, dann zu
 int SENSOR_TYP         = 1;     // 0 = Reflex (Kugel liegt davor), 1 = Shock (Kugel schlaegt auf)
-int SENSOR_SPERR_MS    = 300;   // Shock: Mindestabstand zwischen zwei Kugeln (Prellen der Feder ausblenden)
+int SENSOR_SPERR_MS    = 150;   // Shock: Mindestabstand zwischen zwei Kugeln (Prellen der Feder ausblenden)
+int SENSOR_EMPF        = 10;    // Shock: Empfindlichkeit 1..10. 10 = schon ein einziger Kontakt-Zucker zaehlt,
+                                // niedriger = es braucht mehr Zucker innerhalb von 50 ms (filtert Motor-Vibration)
 const unsigned long ENTPRELL_MS = 40;
 
 // ---------- Zustand ----------
@@ -213,9 +215,14 @@ void stossIsr() { stossFlanken++; }
 void sensorUpdate() {
   if (SENSOR_TYP == 1) {
     uint32_t f = stossFlanken;
+    static uint32_t burstF = 0; static unsigned long burstT = 0; static bool burst = false;
+    if (burst && millis() - burstT > 50) burst = false;               // zu wenig Zucker: war nur Rauschen
     if (f != stossGesehen) {
+      if (!burst) { burst = true; burstT = millis(); burstF = stossGesehen; }
       stossGesehen = f;
-      if (millis() - stossZeit >= (unsigned long)SENSOR_SPERR_MS) {   // neue Kugel, nicht nur Nachschwingen
+      uint32_t noetig = 11 - constrain(SENSOR_EMPF, 1, 10);
+      if (f - burstF >= noetig && millis() - stossZeit >= (unsigned long)SENSOR_SPERR_MS) {   // neue Kugel, nicht nur Nachschwingen
+        burst = false;
         stossZeit = millis();
         kugelDa = true;                               // wartet jetzt an der Stoppstelle, bis freigegeben wird
         if (SENSOR_AN) { kugelZaehler++; Serial.print("Kugel angekommen (Stoss), Zaehler "); Serial.println(kugelZaehler); }

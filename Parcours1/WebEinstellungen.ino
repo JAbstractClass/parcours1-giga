@@ -23,7 +23,8 @@ Param PARAMS[] = {
   {"sensor_inv",  &SENSOR_INV,        0,   1,     0},
   {"stopp_nach",  &STOPP_NACHLAUF_MS, 0,   1000,  0},
   {"sensor_typ",  &SENSOR_TYP,        0,   1,     0},
-  {"sensor_sperr",&SENSOR_SPERR_MS,   20,  3000,  0},
+  {"sensor_sperr",&SENSOR_SPERR_MS,   10,  3000,  0},
+  {"sensor_empf", &SENSOR_EMPF,       1,   10,    0},
   {"laut",        &LAUTSTAERKE,       0,   100,   0},
   {"boost",       &VERSTAERKUNG,      1,   10,    0},
 };
