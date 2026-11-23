@@ -243,7 +243,7 @@ String statusJson() {
   s += ",\"stau\":";      s += stau ? "true" : "false";
   s += ",\"m5\":";        s += m5Status();
   s += ",\"lauf\":";      s += String(laufSekunden());
-  s += ",\"taster\":\"";  s += pegel(tL.pin) ? "1" : "0"; s += pegel(tM.pin) ? "1" : "0"; s += pegel(tR.pin) ? "1" : "0"; s += "\"";
+  s += ",\"taster\":\"";  s += tL.zustand != tL.ruhe ? "1" : "0"; s += tM.zustand != tM.ruhe ? "1" : "0"; s += tR.zustand != tR.ruhe ? "1" : "0";   // 1 = gedrueckt s += "\"";
   s += ",\"flanken\":";   s += String(stossFlanken);
   s += ",\"stoss\":";     s += stossZeit ? String(min(99999UL, millis() - stossZeit)) : String(99999);
   s += ",\"pegel\":\"";

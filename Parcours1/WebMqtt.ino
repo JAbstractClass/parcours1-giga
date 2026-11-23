@@ -57,7 +57,7 @@ void mqttSetup() {
   if (!wlanOk) return;
   suchUdp.begin(SUCH_PORT);
   mqtt.setId("giga-parcours1");
-  mqtt.setKeepAliveInterval(5000);
+  mqtt.setKeepAliveInterval(60000);   // eigene Pausen (z. B. GitHub-Abfrage) duerfen die Verbindung nicht kappen
   mqtt.setConnectionTimeout(1500);
   mqtt.setTxPayloadSize(1100);
   mqtt.onMessage(mqttNachricht);
@@ -76,6 +76,11 @@ void m5Waechter() {
 
 void mqttLoop() {
   if (!wlanOk) return;
+  // War der Giga selbst blockiert (HTTPS-Abfrage, Update), ist das kein Ausfall des M5:
+  // Lebenszeichen-Uhr dann neu starten, damit der Waechter nicht faelschlich ausloest.
+  static unsigned long letzterLauf = 0;
+  if (millis() - letzterLauf > 400) m5Hb = millis();
+  letzterLauf = millis();
   // Broker suchen bzw. Adresse aktuell halten
   int n = suchUdp.parsePacket();
   if (n > 0) {

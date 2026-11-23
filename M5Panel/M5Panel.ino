@@ -300,7 +300,7 @@ void zeichneStatus() {
     zeile2(y, "Kontakte gesamt", String(S.flanken)); y += d;
     zeile2(y, "Sensorpruefung", S.sensor ? "aktiv" : "aus"); y += d;
     String tl = S.taster.length() == 3 ? S.taster : "---";
-    zeile2(y, "Taster L / M / R", String(tl[0] == '1' ? "frei" : "GEDR.") + " / " + (tl[1] == '1' ? "frei" : "GEDR.") + " / " + (tl[2] == '1' ? "frei" : "GEDR.")); y += d;
+    zeile2(y, "Taster L / M / R", String(tl[0] == '1' ? "GEDR." : "frei") + " / " + (tl[1] == '1' ? "GEDR." : "frei") + " / " + (tl[2] == '1' ? "GEDR." : "frei")); y += d;
     zeile2(y, "Kugeln gezaehlt", String(S.kugeln));
   } else {
     zeile2(y, "Anlage", S.ampel == 'g' ? "alles ok" : S.ampel == 'o' ? "kein Internet" : "Stoerung", S.ampel == 'g' ? C_OK : S.ampel == 'o' ? C_WARN : C_RED); y += d;
