@@ -28,6 +28,14 @@ String m5Status() {
   return String("\"") + (m5Aktiv ? "ok" : m5Verloren ? "verloren" : mqtt.connected() ? "warte" : brokerBekannt ? "getrennt" : "aus") + "\"";
 }
 
+// Audio-Paket (binaer) ans M5. Ohne Verbindung wird es verworfen.
+void audioSenden(const char* thema, const uint8_t* daten, size_t n) {
+  if (!mqtt.connected()) return;
+  mqtt.beginMessage(thema, (unsigned long)n);
+  mqtt.write(daten, n);
+  mqtt.endMessage();
+}
+
 void mqttSenden(const char* thema, const String& text) {
   if (!mqtt.connected()) return;
   mqtt.beginMessage(thema, (unsigned long)text.length());

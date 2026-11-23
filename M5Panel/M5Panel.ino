@@ -28,6 +28,7 @@ const uint16_t C_BG = 0x0841, C_CARD = 0x18E3, C_CARD2 = 0x2945, C_LINE = 0x3186
 #define FNUM &fonts::FreeSansBold18pt7b
 
 PicoMQTT::Server broker;
+extern volatile bool kZeigen;   // Claude.ino: Sprechtaste gedrueckt -> Claude-Seite zeigen
 WiFiUDP udp;
 M5Canvas cv(&M5.Display);
 
@@ -84,15 +85,15 @@ int8_t rssiHist[RSSI_N]; int rssiIdx = 0; unsigned long rssiT = 0;
 uint32_t abbrueche = 0, stoerungen = 0; unsigned long verbundenSeit = 0;
 
 // ---------- Oberflaeche ----------
-enum Seite { P_HOME, P_MENU, P_STATUS, P_STEUER, P_PARAM, P_EDIT, P_STATS, P_INFO };
+enum Seite { P_HOME, P_MENU, P_STATUS, P_STEUER, P_PARAM, P_EDIT, P_STATS, P_INFO, P_CLAUDE };
 Seite seite = P_HOME;
 int sel = 0, scroll = 0, statSeite = 0, editWert = 0, menuSel = 0;
 unsigned long rueckmeldung = 0; String rueckText;
 bool warVerbunden = false; char letzteAmpel = 'g'; unsigned long piepT = 0;
 float animT = 0; unsigned long animLast = 0;
 
-const char* MENU_ITEMS[] = {"Status aller Ein-/Ausgaenge", "Manuell steuern", "Betriebsparameter", "Messwerte & Statistik", "Info & Verbindung"};
-const int N_MENU = 5;
+const char* MENU_ITEMS[] = {"Claude (Sprachsteuerung)", "Status aller Ein-/Ausgaenge", "Manuell steuern", "Betriebsparameter", "Messwerte & Statistik", "Info & Verbindung"};
+const int N_MENU = 6;
 
 // Der Giga ist bei seiner minuetlichen GitHub-Abfrage ein paar Sekunden still - das ist kein Abbruch.
 // Erst nach 6 s ohne Daten gilt die Verbindung als verloren (der Giga stoppt die Anlage selbst).
@@ -113,6 +114,9 @@ void mqttTask(void*) {
   broker.socket_timeout_millis = 5000;   // stockt das WLAN, den Giga nicht gleich rauswerfen (sonst staendige Neuverbindungen)
   broker.subscribe("p1/status", [](const char* topic, const char* payload) { xSemaphoreTake(mtx, portMAX_DELAY); neuStatus = payload; hatStatus = true; xSemaphoreGive(mtx); });
   broker.subscribe("p1/einst", [](const char* topic, const char* payload) { xSemaphoreTake(mtx, portMAX_DELAY); neuEinst = payload; hatEinst = true; xSemaphoreGive(mtx); });
+  broker.subscribe("p1/audio/start", [](const char* topic, const char* payload) { upStart(); });
+  broker.subscribe("p1/audio", [](char* topic, void* payload, size_t size) { upDaten((const uint8_t*)payload, size); });
+  broker.subscribe("p1/audio/ende", [](const char* topic, const char* payload) { upEnde(); });
   broker.begin();
   udp.begin(47901);
   unsigned long hbT = 0, suchT = 0;
@@ -480,6 +484,7 @@ void tasten() {
     if (C.wasClicked()) { befehl('s'); meldung("Kugel freigegeben"); }
     return;
   }
+  if (seite == P_CLAUDE) { claudeTasten(); return; }
   if (seite == P_EDIT) {
     Param& p = P[sel];
     if (A.wasHold()) { seite = P_PARAM; return; }
@@ -504,7 +509,7 @@ void tasten() {
     if (seite == P_STATS) statSeite = (statSeite + 1) % STAT_SEITEN;
   }
   if (C.wasClicked()) {
-    if (seite == P_MENU) { menuSel = sel; const Seite z[] = {P_STATUS, P_STEUER, P_PARAM, P_STATS, P_INFO}; seite = z[sel]; sel = 0; scroll = 0; statSeite = 0; if (seite == P_PARAM) senden("p1/get", "1"); }
+    if (seite == P_MENU) { menuSel = sel; const Seite z[] = {P_CLAUDE, P_STATUS, P_STEUER, P_PARAM, P_STATS, P_INFO}; seite = z[sel]; sel = 0; scroll = 0; statSeite = 0; if (seite == P_PARAM) senden("p1/get", "1"); }
     else if (seite == P_STEUER) steuerAusfuehren(sel);
     else if (seite == P_PARAM) {
       Param& p = P[sel];
@@ -528,7 +533,8 @@ void setup() {
   WiFi.setSleep(false);
   WiFi.begin(WLAN_SSID, WLAN_PASS);
   mtx = xSemaphoreCreateMutex();
-  xTaskCreatePinnedToCore(mqttTask, "mqtt", 12288, nullptr, 2, nullptr, 0);
+  xTaskCreatePinnedToCore(mqttTask, "mqtt", 16384, nullptr, 2, nullptr, 0);
+  xTaskCreatePinnedToCore(claudeTask, "claude", 12288, nullptr, 1, nullptr, 0);
 }
 
 void loop() {
@@ -540,6 +546,7 @@ void loop() {
   xSemaphoreGive(mtx);
   if (s1) statusLesen(st.c_str());
   if (s2) einstLesen(ei.c_str());
+  if (kZeigen) { kZeigen = false; seite = P_CLAUDE; }
   tasten();
   unsigned long now = millis();
   static unsigned long zeichenT = 0;
@@ -561,7 +568,7 @@ void loop() {
   if (now - zeichenT < 40) return;
   float dt = (now - animLast) / 1000.0f; animLast = now; animT += dt; zeichenT = now;
   cv.fillScreen(C_BG);
-  if (!ok && (seite == P_HOME || !S.da)) zeichneVerloren();
+  if (!ok && seite != P_CLAUDE && (seite == P_HOME || !S.da)) zeichneVerloren();
   else switch (seite) {
     case P_HOME: zeichneHome(); break;
     case P_MENU: zeichneMenu(); break;
@@ -571,6 +578,7 @@ void loop() {
     case P_EDIT: zeichneEdit(); break;
     case P_STATS: zeichneStats(); break;
     case P_INFO: zeichneInfo(); break;
+    case P_CLAUDE: zeichneClaude(); break;
   }
   if (!ok && seite != P_HOME && S.da) {               // auch in Menues: rote Leiste
     cv.fillRect(0, 0, 320, 24, C_RED); cv.setFont(F16); cv.setTextColor(C_INK); cv.setTextDatum(middle_center);

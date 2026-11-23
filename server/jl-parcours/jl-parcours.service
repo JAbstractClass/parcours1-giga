@@ -1,0 +1,15 @@
+[Unit]
+Description=JL Parcours 1 - Sprachsteuerung der Kugelbahn (Whisper ueber jl-minime, Claude Code CLI im Repo, edge-tts)
+After=network-online.target jl-minime.service
+
+[Service]
+User=jlclaude
+WorkingDirectory=/var/lib/jl-claude
+EnvironmentFile=/etc/jl-parcours.env
+Environment=HOME=/var/lib/jl-claude PYTHONUNBUFFERED=1
+ExecStart=/opt/jl-minime/venv/bin/python /opt/jl-parcours/server.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -471,6 +471,7 @@ void githubPruefen() {
   // nicht pruefen, waehrend eine Weiche faehrt (die Abfrage blockiert ~1-2 s)
   if (weiche.aktiv || hebel.aktiv) return;
   if (musikLaeuft()) return;   // Abfrage blockiert kurz und wuerde das Lied stocken lassen
+  if (sprechen) return;        // waehrend der Aufnahme nichts blockieren
   if (!erstePruefung && millis() - letztePruefung < UPDATE_PRUEF_MS) return;
   if (erstePruefung && millis() < 5000) return;   // nach dem Start kurz warten
   erstePruefung = false;

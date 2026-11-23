@@ -20,6 +20,7 @@
 // WLAN, Weboberflaeche und OTA-Update: siehe Web.ino und arduino_secrets.h
 
 #include <Servo.h>
+#include <Arduino_AdvancedAnalog.h>
 #include "Typen.h"
 #include <mbed.h>
 #include <WiFi.h>   // hier, damit die Arduino-Prototypen fuer Web.ino WiFiClient kennen
@@ -255,20 +256,55 @@ void sensorUpdate() {
 }
 
 // ---------- Sprechtaste und Mikrofon ----------
-// Vorerst nur Messung: Pegel des Mikrofons (Min/Max/Spitze-Spitze ueber 200 ms) und ob die Taste gehalten wird.
-// Daran sieht man im Dashboard, ob A7 mit dem Shield echte Werte liefert, bevor die Sprachaufnahme gebaut wird.
-bool sprechen = false;
-int micMin = 4095, micMax = 0, micPP = 0, micMitte = 0;
-unsigned long micT = 0, micSum = 0, micN = 0;
+// Das Mikrofon an A7 wird per DMA mit 8 kHz gelesen (Arduino_AdvancedAnalog), unabhaengig davon,
+// wie lange ein loop-Durchlauf dauert (Puffer fuer 2 s). Solange die Sprechtaste gehalten wird,
+// gehen die Samples als 8-Bit-Audio in Stuecken per MQTT ans M5Stack (p1/audio/start, p1/audio, p1/audio/ende),
+// das sie an den Server zur Spracherkennung weiterreicht (siehe server/jl-parcours).
+AdvancedADC mikro(MIKROFON);
+bool mikroAn = false, sprechen = false;
+int MIC_GAIN = 6;                                  // Verstaerkung vor der Wandlung auf 8 Bit
+int micPP = 0, micMitte = 0;
+float micDc = 2048;                                // laufender Mittelwert (Gleichanteil)
+int micMin = 4095, micMax = 0; unsigned long micT = 0, micSum = 0, micN = 0;
+uint8_t audioRaus[960]; int audioN = 0;             // gesammelte 8-Bit-Samples bis zum naechsten Paket (PicoMQTT: max. 1 KB pro Nachricht)
+uint32_t audioGesamt = 0; unsigned long sprechStart = 0;
+const uint32_t AUDIO_MAX = 30UL * 8000;            // hoechstens 30 s
+
+void mikroSetup() {
+  mikroAn = mikro.begin(AN_RESOLUTION_12, 8000, 256, 64);
+  Serial.println(mikroAn ? "Mikrofon A7: 8 kHz" : "Mikrofon A7: AdvancedADC startet nicht");
+}
+
 void sprechtasteUpdate() {
-  bool g = tL.zustand != tL.ruhe;
   gedrueckt(tL);                                   // Entprellung weiterlaufen lassen
-  g = tL.zustand != tL.ruhe;
-  if (g != sprechen) { sprechen = g; Serial.println(g ? "Sprechtaste gedrueckt" : "Sprechtaste losgelassen"); }
-  int v = analogRead(MIKROFON);
-  micMin = min(micMin, v); micMax = max(micMax, v); micSum += v; micN++;
-  if (millis() - micT >= 200) {
-    micT = millis(); micPP = micMax - micMin; micMitte = micN ? micSum / micN : 0;
+  bool g = tL.zustand != tL.ruhe;
+  if (g && !sprechen) {
+    sprechen = true; audioN = 0; audioGesamt = 0; sprechStart = millis();
+    Serial.println("Sprechtaste gedrueckt");
+    audioSenden("p1/audio/start", (const uint8_t*)"8000", 4);
+  } else if (!g && sprechen) {
+    sprechen = false;
+    if (audioN) { audioSenden("p1/audio", audioRaus, audioN); audioN = 0; }
+    audioSenden("p1/audio/ende", (const uint8_t*)"1", 1);
+    Serial.print("Sprechtaste losgelassen, "); Serial.print(audioGesamt / 8000.0, 1); Serial.println(" s Audio");
+  }
+  if (!mikroAn) return;
+  while (mikro.available()) {
+    SampleBuffer buf = mikro.read();
+    for (size_t i = 0; i < buf.size(); i++) {
+      int v = buf[i];
+      micMin = min(micMin, v); micMax = max(micMax, v); micSum += v; micN++;
+      micDc += (v - micDc) * 0.002f;
+      if (sprechen && audioGesamt < AUDIO_MAX) {
+        int s = 128 + (int)((v - micDc) * MIC_GAIN / 16);
+        audioRaus[audioN++] = (uint8_t)constrain(s, 0, 255); audioGesamt++;
+        if (audioN == sizeof(audioRaus)) { audioSenden("p1/audio", audioRaus, audioN); audioN = 0; }
+      }
+    }
+    buf.release();
+  }
+  if (millis() - micT >= 200) {                    // Pegel fuers Dashboard (auf 10 Bit skaliert wie vorher)
+    micT = millis(); micPP = (micMax - micMin) >> 2; micMitte = micN ? (micSum / micN) >> 2 : 0;
     micMin = 4095; micMax = 0; micSum = 0; micN = 0;
   }
 }
@@ -498,6 +534,7 @@ void setup() {
 
   webSetup();
   mqttSetup();
+  mikroSetup();
   liedPruefen();
   einstLaden();   // gespeicherte Einstellungen aus dem Flash (braucht den in webSetup eingebundenen Speicher)
 }

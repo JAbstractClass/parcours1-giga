@@ -27,6 +27,7 @@ Param PARAMS[] = {
   {"sensor_empf", &SENSOR_EMPF,       1,   10,    0},
   {"stau_s",      &STAU_S,            0,   300,   0},
   {"m5_waechter", &M5_WAECHTER,       0,   1,     0},
+  {"mic_gain",    &MIC_GAIN,          1,   32,    0},
   {"laut",        &LAUTSTAERKE,       0,   100,   0},
   {"boost",       &VERSTAERKUNG,      1,   10,    0},
 };
