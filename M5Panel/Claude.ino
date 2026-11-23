@@ -89,7 +89,7 @@ void vorlesen() {
   h.setTimeout(30000);
   if (!h.begin(kCli, "http://" + p1Host() + p1Pfad() + "/tts/" + kJob)) { kz = K_FERTIG; return; }
   int tc = h.GET();
-  if (tc != 200) { char e[80] = ""; kCli.lastError(e, sizeof(e)); kLog("tts fehlgeschlagen " + String(tc) + " " + e); }
+  if (tc != 200) kLog("tts fehlgeschlagen " + String(tc));
   if (tc == 200) {
     WiFiClient* s = h.getStreamPtr();
     int rest = h.getSize();
@@ -151,7 +151,7 @@ void claudeTask(void*) {
     if (kz == K_DENKT && kJob.length()) {
       int code = 0;
       String r = p1Anfrage("GET", "/job/" + kJob + "?ab=" + kN, &code);
-      if (code <= 0) { char e[80] = ""; kCli.lastError(e, sizeof(e)); kLog("abfrage fehlgeschlagen " + String(code) + " " + e); }
+      if (code <= 0) kLog("abfrage fehlgeschlagen " + String(code));
       JsonDocument j;
       if (r.length() && !deserializeJson(j, r)) {
         for (JsonVariant s : j["schritte"].as<JsonArray>()) kSchritt((const char*)s);
