@@ -52,6 +52,7 @@ void mqttNachricht(int groesse) {
     if (!m5Aktiv) { m5Aktiv = true; Serial.println("M5Stack verbunden"); einstSenden = true; }
     return;
   }
+  if (thema == "p1/claude/ok") { claudeOk = text; return; }   // "<job>:ja" oder "<job>:nein", in der Hauptschleife gesendet
   if (thema == "p1/token") { if (text.length() >= 24 && text.length() < 100) p1Token = text; return; }
   if (thema == "p1/cmd" && text.length() == 1 && strchr("awhslxvj", text[0])) { befehl(text[0]); statusT = 0; }
   else if (thema == "p1/set") {
@@ -123,7 +124,7 @@ void mqttLoop() {
     dConnA = max(dConnA, millis() - tc); verbindungen++;
     if (okc) {
       mqtt.subscribe("p1/cmd"); mqtt.subscribe("p1/set"); mqtt.subscribe("p1/lampe");
-      mqtt.subscribe("p1/get"); mqtt.subscribe("p1/hb"); mqtt.subscribe("p1/token");
+      mqtt.subscribe("p1/get"); mqtt.subscribe("p1/hb"); mqtt.subscribe("p1/token"); mqtt.subscribe("p1/claude/ok");
       mqttPause = 2000; einstSenden = true;
       Serial.println("MQTT verbunden");
     } else {

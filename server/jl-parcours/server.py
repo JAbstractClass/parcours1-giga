@@ -18,7 +18,9 @@
 #   POST /job/<id>/ja         Branch auf main bringen (push)      -> {"ok"} | {"fehler"}
 #   POST /job/<id>/nein       Branch verwerfen
 #   GET  /health
-# Alle Anfragen ausser /health brauchen den Header X-P1-Token.
+# Alle Anfragen ausser /health, GET /job/<id> und GET /tts/<id> brauchen den Header X-P1-Token.
+# Lesen geht ueber die zufaellige Job-Nummer (das M5 hat zu wenig RAM fuer HTTPS und liest per HTTP);
+# alles, was etwas ausloest (/stimme, /text, /ja, /nein), braucht den Token und kommt per HTTPS vom Giga.
 #
 # Laeuft als jlclaude (systemd jl-parcours.service) auf 127.0.0.1:3065,
 # Apache: https://minime.love66.app/p1/ -> 127.0.0.1:3065/. Konfiguration: /etc/jl-parcours.env
@@ -383,8 +385,6 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/health":
             return self.send_json(200, {"ok": True})
-        if not self.authed():
-            return
         m = re.fullmatch(r"/job/([a-f0-9]{12})(?:\?ab=(\d+))?", self.path)
         if m and (j := self.job(m.group(1))):
             ab = int(m.group(2) or 0)
@@ -402,6 +402,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(pcm)))
             self.end_headers()
             self.wfile.write(pcm)
+            return
+        if not self.authed():
             return
         self.send_json(404, {"fehler": "nicht gefunden"})
 

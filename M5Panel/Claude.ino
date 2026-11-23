@@ -8,9 +8,9 @@
 #include "Zertifikate.h"
 #include <time.h>
 
-// Nur X1: mit zusaetzlich X2 in der Liste scheitert die Pruefung auf dem ESP32 (getestet); die Kette
-// des Servers enthaelt X2 quer-signiert von X1, das reicht.
-String caListe() { return String(ISRG_ROOT_X1_PEM); }
+// Beide Let's-Encrypt-Wurzeln: minime.love66.app nutzt die ECDSA-Kette YE2 -> Root YE -> ISRG Root X2
+// (nur mit X1 scheitert die Pruefung auf dem ESP32). Gueltige Uhrzeit ist Pflicht (siehe uhrVomGiga).
+String caListe() { return String(ISRG_ROOT_X1_PEM) + ISRG_ROOT_X2_PEM; }
 String CA_LISTE;
 
 // Zertifikate werden nach Datum geprueft: ohne Uhrzeit (1970) waeren sie "noch nicht gueltig"
@@ -45,7 +45,7 @@ void kLog(const String& s) { senden("p1/claudelog", String(millis()) + " " + s +
 
 void kSchritt(const String& s) { xSemaphoreTake(mtx, portMAX_DELAY); kSchritte.push_back(s); if (kSchritte.size() > 40) kSchritte.erase(kSchritte.begin()); xSemaphoreGive(mtx); }
 
-WiFiClientSecure kCli;                           // Verbindung fuer Abfragen und Vorlesen
+WiFiClient kCli;                                 // Abfragen und Vorlesen per HTTP (Job-Nummer genuegt, kein RAM fuer TLS)
 
 // Zustand der Anlage als kurze JSON-Zeile fuer Claude (aus dem zuletzt empfangenen Status)
 String statusFuerClaude() {
@@ -69,13 +69,13 @@ void upSendet(const char* p) { kz = K_SENDET; kSchritt(String("Aufnahme ") + Str
 void upJob(const char* id) { kJob = id; kN = 0; kz = K_DENKT; kZeigen = true; }
 void upFehler(const char* t) { kMeldung = t; kz = K_FEHLER; kZeigen = true; }
 void upWache() {}
+void upOkAntwort(const char* t) { kMeldung = t; if (String(t).startsWith("Uebernommen") || String(t).startsWith("Aenderung verworfen")) kAenderung = ""; kSchritt(t); }
 
 // ---------- Abfragen, Vorlesen, Uebernehmen (eigener Task) ----------
 String p1Anfrage(const char* methode, const String& pfad, int* code = nullptr) {
   HTTPClient h;
   h.setReuse(false); h.setTimeout(15000);
-  if (!h.begin(kCli, "https://" + p1Host() + p1Pfad() + pfad)) return "";
-  h.addHeader("X-P1-Token", P1_TOKEN);
+  if (!h.begin(kCli, "http://" + p1Host() + p1Pfad() + pfad)) return "";
   int c = strcmp(methode, "POST") == 0 ? h.POST("") : h.GET();
   if (code) *code = c;
   String r = c > 0 ? h.getString() : "";
@@ -87,8 +87,7 @@ void vorlesen() {
   kz = K_SPRICHT; kTonStopp = false;
   HTTPClient h;
   h.setTimeout(30000);
-  if (!h.begin(kCli, "https://" + p1Host() + p1Pfad() + "/tts/" + kJob)) { kz = K_FERTIG; return; }
-  h.addHeader("X-P1-Token", P1_TOKEN);
+  if (!h.begin(kCli, "http://" + p1Host() + p1Pfad() + "/tts/" + kJob)) { kz = K_FERTIG; return; }
   int tc = h.GET();
   if (tc != 200) { char e[80] = ""; kCli.lastError(e, sizeof(e)); kLog("tts fehlgeschlagen " + String(tc) + " " + e); }
   if (tc == 200) {
@@ -148,8 +147,6 @@ void aktionenTask(void* p) {
 }
 
 void claudeTask(void*) {
-  if (!CA_LISTE.length()) CA_LISTE = caListe();
-  kCli.setCACert(CA_LISTE.c_str());
   for (;;) {
     if (kz == K_DENKT && kJob.length()) {
       int code = 0;
@@ -167,8 +164,9 @@ void claudeTask(void*) {
           if (!strcmp(st, "fehler")) kMeldung = (const char*)(j["fehler"] | "");
           auto* liste = new std::vector<String>();
           for (JsonVariant a : j["aktionen"].as<JsonArray>()) liste->push_back((const char*)a);
-          if (liste->size()) xTaskCreatePinnedToCore(aktionenTask, "aktionen", 6144, liste, 1, nullptr, 1);   // parallel zum Vorlesen
-          else delete liste;
+          if (liste->size()) {
+            if (xTaskCreatePinnedToCore(aktionenTask, "aktionen", 6144, liste, 1, nullptr, 1) != pdPASS) { kLog("aktionen: kein Speicher"); delete liste; }
+          } else delete liste;
           vorlesen();
           if (kMeldung.length()) kz = K_FEHLER;
         } else if (!kFrage.length()) kFrage = (const char*)(j["frage"] | "");
@@ -180,14 +178,9 @@ void claudeTask(void*) {
     if (a && kJob.length()) {
       kAktion = 0;
       if (a == 'w') { vorlesen(); continue; }
-      int code = 0;
-      String r = p1Anfrage("POST", "/job/" + kJob + (a == 'j' ? "/ja" : "/nein"), &code);
-      JsonDocument j;
-      if (!deserializeJson(j, r) && j["ok"]) {
-        kSchritt(a == 'j' ? "Uebernommen: GitHub baut, der Giga holt sich die Firmware" : "Verworfen");
-        kAenderung = "";
-        kMeldung = a == 'j' ? "Uebernommen - Update kommt in ca. 2 min" : "Aenderung verworfen";
-      } else kMeldung = j["fehler"].is<const char*>() ? (const char*)j["fehler"] : "Server-Fehler " + String(code);
+      // Uebernehmen/Verwerfen braucht den Server-Zugang per HTTPS -> macht der Giga, Antwort kommt per MQTT
+      senden("p1/claude/ok", kJob + (a == 'j' ? ":ja" : ":nein"));
+      kMeldung = a == 'j' ? "Wird uebernommen ..." : "Wird verworfen ...";
     }
     vTaskDelay(pdMS_TO_TICKS(100));
   }

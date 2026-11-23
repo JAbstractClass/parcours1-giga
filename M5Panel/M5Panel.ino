@@ -119,6 +119,7 @@ void mqttTask(void*) {
   broker.subscribe("p1/claude/start", [](const char* topic, const char* payload) { upSendet(payload); });
   broker.subscribe("p1/claude/job", [](const char* topic, const char* payload) { upJob(payload); });
   broker.subscribe("p1/claude/fehler", [](const char* topic, const char* payload) { upFehler(payload); });
+  broker.subscribe("p1/claude/okantwort", [](const char* topic, const char* payload) { upOkAntwort(payload); });
   broker.begin();
   udp.begin(47901);
   unsigned long hbT = 0, suchT = 0;

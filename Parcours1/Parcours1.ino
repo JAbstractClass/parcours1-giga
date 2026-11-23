@@ -274,6 +274,20 @@ uint8_t aufnahme[AUDIO_MAX];
 uint32_t audioGesamt = 0; int audioSpitze = 0; unsigned long pegelT = 0;
 String p1Token = "";                               // Zugang zum Server, kommt vom M5 per MQTT (steht nicht im Repo)
 const char* P1_STIMME_URL = "https://minime.love66.app/p1/stimme";
+String claudeOk = "";                              // "<job>:ja" / "<job>:nein" vom M5, wird per HTTPS an den Server gegeben
+
+void claudeOkSenden() {
+  if (!claudeOk.length()) return;
+  String t = claudeOk; claudeOk = "";
+  int k = t.indexOf(':');
+  if (k != 12 || p1Token.length() < 24) return;
+  String job = t.substring(0, k), was = t.substring(k + 1) == "ja" ? "ja" : "nein";
+  String antwort;
+  int code = httpsSenden((String("https://minime.love66.app/p1/job/") + job + "/" + was).c_str(), (const uint8_t*)"", 0, antwort);
+  bool ok = code == 200 && antwort.indexOf("\"ok\"") >= 0;
+  String m = ok ? (was == "ja" ? "Uebernommen - Update kommt in ca. 2 min" : "Aenderung verworfen") : "Fehler: " + (antwort.length() ? antwort.substring(0, 80) : String(code));
+  audioSenden("p1/claude/okantwort", (const uint8_t*)m.c_str(), m.length());
+}
 
 void mikroSetup() {
   mikroAn = mikro.begin(AN_RESOLUTION_12, 8000, 256, 64);
@@ -576,6 +590,7 @@ void loop() {
 
   if (gedrueckt(tM)) { Serial.println("Taster MITTE"); setAufzug(!aufzugAn); }
   sprechtasteUpdate();
+  claudeOkSenden();
   if (gedrueckt(tR)) { Serial.println("Taster RECHTS"); umschalten(hebel); }
 
   stellUpdate(weiche);
