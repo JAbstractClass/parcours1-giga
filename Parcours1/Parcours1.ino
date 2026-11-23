@@ -121,6 +121,7 @@ unsigned long laufMs = 0, laufSeit = 0;   // Betriebszeit des Aufzugs seit Neust
 // Diagnose: laengste Dauer je Teil der Hauptschleife in den letzten 3 s (im Status als "diag")
 unsigned long dWeb = 0, dMqtt = 0, dRest = 0, dWebA = 0, dMqttA = 0, dRestA = 0, dT = 0;
 unsigned long dPoll = 0, dSend = 0, dConn = 0, dPollA = 0, dSendA = 0, dConnA = 0, dMT = 0; uint32_t verbindungen = 0;
+volatile int m5Rssi = 0;       // WLAN-Staerke des M5 (kommt mit dem Lebenszeichen)
 bool weicheLinks = true, hebelLinks = true;
 unsigned long stoppZeit = 0;
 bool live = false;              // 'm': Tasterwerte laufend ausgeben

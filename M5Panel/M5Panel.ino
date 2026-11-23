@@ -110,7 +110,7 @@ void senden(const char* thema, const String& text) {
   xSemaphoreTake(mtx, portMAX_DELAY); ausgang.push_back({thema, text}); xSemaphoreGive(mtx);
 }
 void mqttTask(void*) {
-  broker.socket_timeout_millis = 1000;   // nie laenger als 1 s auf einen halben Datensatz warten
+  broker.socket_timeout_millis = 5000;   // stockt das WLAN, den Giga nicht gleich rauswerfen (sonst staendige Neuverbindungen)
   broker.subscribe("p1/status", [](const char* topic, const char* payload) { xSemaphoreTake(mtx, portMAX_DELAY); neuStatus = payload; hatStatus = true; xSemaphoreGive(mtx); });
   broker.subscribe("p1/einst", [](const char* topic, const char* payload) { xSemaphoreTake(mtx, portMAX_DELAY); neuEinst = payload; hatEinst = true; xSemaphoreGive(mtx); });
   broker.begin();
@@ -120,7 +120,7 @@ void mqttTask(void*) {
     broker.loop();
     unsigned long now = millis();
     if (WiFi.status() == WL_CONNECTED) {
-      if (now - hbT >= 400) { hbT = now; broker.publish("p1/hb", "1"); }
+      if (now - hbT >= 400) { hbT = now; broker.publish("p1/hb", String(WiFi.RSSI())); }   // Inhalt: eigene WLAN-Staerke
       if (now - suchT >= 1000) { suchT = now; udp.beginPacket(WiFi.broadcastIP(), 47900); udp.print("P1BROKER"); udp.endPacket(); }
     }
     std::vector<Ausgang> raus;
