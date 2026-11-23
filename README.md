@@ -38,6 +38,15 @@ Im Dashboard oben rechts **Einstellen**: Geschwindigkeit des Aufzugs, Kraft und 
   `arduino-cli compile -b esp32:esp32:m5stack_core:FlashSize=16M,PartitionScheme=huge_app M5Panel` und `arduino-cli upload … -p /dev/cu.usbserial-* M5Panel`.
   Bibliotheken: M5Unified 0.2.2, PicoMQTT 1.3.0, ArduinoJson 7.2.1 (ESP32-Kern 3.0.7).
 
+## Sprachsteuerung mit Claude
+
+1. **Linken Taster am Giga gedrückt halten** und ins Mikrofon (A7) sprechen, dann loslassen. Der Giga liest das Mikrofon per DMA mit 8 kHz (Arduino_AdvancedAnalog) und schickt die Aufnahme per MQTT ans M5Stack.
+2. Das M5 wechselt auf die **Claude-Seite**, streamt die Aufnahme an den Server (`https://minime.love66.app/p1`, Dienst `jl-parcours`) und zeigt Claudes Zwischenschritte live.
+3. Der Server macht Sprache zu Text (Whisper über `jl-minime`), startet Claude Code in einer Kopie dieses Repos auf einem eigenen Branch `stimme/<id>` und liest die Antwort per edge-tts vor (Lautsprecher des M5).
+4. Hat Claude etwas geändert: am M5 **C = übernehmen** (Branch → `main` → GitHub baut → der Giga holt sich die Firmware), **A = verwerfen**. B wiederholt die Antwort bzw. schaltet den Ton aus.
+
+Server-Code: `server/jl-parcours/` (läuft als `jlclaude`, Konfiguration `/etc/jl-parcours.env` mit `P1_TOKEN`, `MINIME_TOKEN`, `CLAUDE_ACCOUNT`). Der Token steht für das M5 in `M5Panel/secrets.h` (nicht im Repo). Claude kann auf dem Server nicht kompilieren; schlägt der Build bei GitHub fehl, bleibt der Giga auf der alten Version. Mikrofon-Verstärkung: Einstellung `mic_gain`.
+
 ## Dashboard bearbeiten
 
 Quelle ist `Parcours1/dashboard.html`. Vorschau ohne Giga (simuliert alle Funktionen):
