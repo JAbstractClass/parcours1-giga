@@ -8,13 +8,23 @@
 #include "Zertifikate.h"
 #include <time.h>
 
-// Beide Let's-Encrypt-Wurzeln (X1 RSA, X2 ECDSA) als eine Liste fuer mbedTLS
-String caListe() { return String(ISRG_ROOT_X1_PEM) + ISRG_ROOT_X2_PEM; }
+// Nur X1: mit zusaetzlich X2 in der Liste scheitert die Pruefung auf dem ESP32 (getestet); die Kette
+// des Servers enthaelt X2 quer-signiert von X1, das reicht.
+String caListe() { return String(ISRG_ROOT_X1_PEM); }
 String CA_LISTE;
 
 // Zertifikate werden nach Datum geprueft: ohne Uhrzeit (1970) waeren sie "noch nicht gueltig"
 bool uhrOk() { return time(nullptr) > 1700000000; }
-void uhrStellen() { static bool gestartet = false; if (!gestartet) { gestartet = true; configTime(0, 0, "pool.ntp.org", "time.google.com"); } }
+void uhrStellen() {                              // NTP; bis es klappt alle 30 s neu versuchen
+  static unsigned long t = 0;
+  if (uhrOk() || (t && millis() - t < 30000)) return;
+  t = millis(); configTime(0, 0, "pool.ntp.org", "time.google.com", "time.cloudflare.com");
+}
+// Uhr vom Giga uebernehmen (der hat sie per NTP fuer seine GitHub-Abfragen)
+void uhrVomGiga(uint32_t unix) {
+  if (unix < 1700000000 || abs((long)(time(nullptr) - unix)) < 60) return;
+  struct timeval tv = {(time_t)unix, 0}; settimeofday(&tv, nullptr);
+}
 
 enum KZustand { K_AUS, K_HOERT, K_SENDET, K_DENKT, K_SPRICHT, K_FERTIG, K_FEHLER };
 volatile KZustand kz = K_AUS;
@@ -79,7 +89,9 @@ void vorlesen() {
   h.setTimeout(30000);
   if (!h.begin(kCli, "https://" + p1Host() + p1Pfad() + "/tts/" + kJob)) { kz = K_FERTIG; return; }
   h.addHeader("X-P1-Token", P1_TOKEN);
-  if (h.GET() == 200) {
+  int tc = h.GET();
+  if (tc != 200) { char e[80] = ""; kCli.lastError(e, sizeof(e)); kLog("tts fehlgeschlagen " + String(tc) + " " + e); }
+  if (tc == 200) {
     WiFiClient* s = h.getStreamPtr();
     int rest = h.getSize();
     static uint8_t puf[3][4096]; int k = 0;
@@ -142,7 +154,7 @@ void claudeTask(void*) {
     if (kz == K_DENKT && kJob.length()) {
       int code = 0;
       String r = p1Anfrage("GET", "/job/" + kJob + "?ab=" + kN, &code);
-      if (code <= 0) kLog("abfrage fehlgeschlagen " + String(code));
+      if (code <= 0) { char e[80] = ""; kCli.lastError(e, sizeof(e)); kLog("abfrage fehlgeschlagen " + String(code) + " " + e); }
       JsonDocument j;
       if (r.length() && !deserializeJson(j, r)) {
         for (JsonVariant s : j["schritte"].as<JsonArray>()) kSchritt((const char*)s);

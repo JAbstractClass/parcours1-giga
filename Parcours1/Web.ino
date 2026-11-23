@@ -264,6 +264,7 @@ String statusJson() {
   s += ",\"kugeln\":";    s += String(kugelZaehler);
   s += ",\"sensor\":";    s += SENSOR_AN ? "true" : "false";
   s += ",\"styp\":";      s += SENSOR_TYP;
+  s += ",\"zeit\":";      s += String((unsigned long)(zeitGesetzt ? time(NULL) : 0));   // Unix-Zeit (fuer die HTTPS-Pruefung am M5)
   s += ",\"stau\":";      s += stau ? "true" : "false";
   s += ",\"sprechen\":";  s += sprechen ? "true" : "false";
   s += ",\"mic\":[";      s += String(micMitte); s += ","; s += String(micPP); s += "]";

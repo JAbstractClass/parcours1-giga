@@ -129,6 +129,8 @@ void mqttTask(void*) {
     if (WiFi.status() == WL_CONNECTED) {
       uhrStellen();                                   // Uhrzeit per NTP (fuer HTTPS-Zertifikate)
       if (now - hbT >= 400) { hbT = now; broker.publish("p1/hb", String(WiFi.RSSI())); }   // Inhalt: eigene WLAN-Staerke
+      static unsigned long infoT = 0;
+      if (now - infoT >= 5000) { infoT = now; broker.publish("p1/m5info", String("zeit ") + (long)time(nullptr) + " heap " + ESP.getFreeHeap() + " block " + heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) + " min " + ESP.getMinFreeHeap()); }
       static unsigned long tokT = 0;
       if (now - tokT >= 5000) { tokT = now; broker.publish("p1/token", P1_TOKEN); }    // Server-Zugang fuer den Giga (nur im lokalen Netz)
       if (now - suchT >= 1000) { suchT = now; udp.beginPacket(WiFi.broadcastIP(), 47900); udp.print("P1BROKER"); udp.endPacket(); }
@@ -154,6 +156,7 @@ void statusLesen(const char* payload) {
   S.grund = (const char*)(j["grund"] | ""); S.version = (const char*)(j["version"] | "");
   S.pegel = (const char*)(j["pegel"] | ""); S.taster = (const char*)(j["taster"] | "");
   S.m5 = (const char*)(j["m5"] | ""); S.ip = (const char*)(j["ip"] | "");
+  uhrVomGiga(j["zeit"] | 0);
   if (!S.da) { kugelnMinBasis = S.kugeln; minStart = millis(); }
   S.da = true; S.t = millis();
 }
