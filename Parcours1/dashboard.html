@@ -314,6 +314,7 @@ body.xmas #stage{background:radial-gradient(90% 70% at 50% 40%,#18233a,var(--bg)
    <button class="row" id="z_k" data-go="cfg"><span class="ic"><svg class="i"><use href="#i-eye"/></svg></span><span class="tx"><b>Kugelsensor</b><small>–</small></span><svg class="i"><use href="#i-chev"/></svg></button>
    <button class="row" id="z_l" data-go="cfg"><span class="ic"><svg class="i"><use href="#i-bulb"/></svg></span><span class="tx"><b>Licht</b><small>–</small></span><svg class="i"><use href="#i-chev"/></svg></button>
    <button class="row" id="z_c" data-go="sys"><span class="ic"><svg class="i"><use href="#i-wifi"/></svg></span><span class="tx"><b>Verbindung</b><small>–</small></span><svg class="i"><use href="#i-chev"/></svg></button>
+   <button class="row" id="z_mic" data-go="sys"><span class="ic"><svg class="i"><use href="#i-pulse"/></svg></span><span class="tx"><b>Mikrofon (A7) · Sprechtaste</b><small>–</small><span class="bar" style="display:block"><i id="mic_p"></i></span></span><svg class="i"><use href="#i-chev"/></svg></button>
    <button class="row" id="z_m" data-go="sys"><span class="ic"><svg class="i"><use href="#i-chip"/></svg></span><span class="tx"><b>M5Stack-Panel</b><small>–</small></span><svg class="i"><use href="#i-chev"/></svg></button>
    <button class="row" id="z_f" data-go="sys"><span class="ic"><svg class="i"><use href="#i-chip"/></svg></span><span class="tx"><b>Software</b><small>–</small></span><svg class="i"><use href="#i-chev"/></svg></button>
   </div>
@@ -448,6 +449,7 @@ function render(s){
   const q=s.rssi>=-55?4:s.rssi>=-67?3:s.rssi>=-75?2:1,ql=['','Schwach','Mittel','Gut','Sehr gut'][q];
   $('k_wl').textContent=ql;[...$('k_bars').children].forEach((e,i)=>e.classList.toggle('on',i<q));
   $('k_wls').textContent=s.rssi+' dBm · Antwort in '+lat+' ms';
+  if(s.mic){rowSet('z_mic',!!s.sprechen,(s.sprechen?'Sprechtaste gedrückt · ':'')+'Mittel '+s.mic[0]+' · Ausschlag '+s.mic[1]);$('mic_p').style.width=Math.min(100,s.mic[1]/10.24)+'%';}
   rowSet('z_m',s.m5==='ok',({ok:'Verbunden über MQTT · synchron',warte:'MQTT verbunden · wartet auf Lebenszeichen',getrennt:'Gefunden, aber nicht verbunden',verloren:'Verbindung verloren · Anlage gestoppt',aus:'Nicht gefunden'})[s.m5]||'–');
   rowSet('z_c',false,'WLAN '+ql.toLowerCase()+' · '+(amp==='o'?'kein Internet':'online')+' · '+lat+' ms');
   if(s.daten!==undefined){const b=s.daten+s.abrufe*7000;$('k_dat').textContent=b<1e6?Math.round(b/1e3)+' KB':(b/1e6).toFixed(1)+' MB';if(s.uptime>60)$('k_dat_s').textContent='≈ '+(b/s.uptime*3.6/1e3).toFixed(1)+' MB pro Stunde';}

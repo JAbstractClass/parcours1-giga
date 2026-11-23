@@ -241,6 +241,8 @@ String statusJson() {
   s += ",\"sensor\":";    s += SENSOR_AN ? "true" : "false";
   s += ",\"styp\":";      s += SENSOR_TYP;
   s += ",\"stau\":";      s += stau ? "true" : "false";
+  s += ",\"sprechen\":";  s += sprechen ? "true" : "false";
+  s += ",\"mic\":[";      s += String(micMitte); s += ","; s += String(micPP); s += "]";
   s += ",\"diag\":\"web " + String(dWeb) + " mqtt " + String(dMqtt) + " poll " + String(dPoll) + " send " + String(dSend) + " conn " + String(dConn) + " verb " + String(verbindungen) + " m5rssi " + String(m5Rssi) + "\"";
   s += ",\"m5\":";        s += m5Status();
   s += ",\"lauf\":";      s += String(laufSekunden());

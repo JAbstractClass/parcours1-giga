@@ -5,7 +5,8 @@
 // Taster: beim Start NICHT druecken - der Ruhezustand wird dann gemessen.
 // Bedienung per Taster:
 //   T_M (Mitte)  -> Kettenaufzug AN/AUS
-//   T_L (links)  -> Stellweiche (Flexschiene) umschalten
+//   T_L (links)  -> Sprechtaste: gedrueckt halten und ins Mikrofon (A7) sprechen
+//                   (Weiche 1 schaltet man jetzt im Dashboard oder am M5)
 //   T_R (rechts) -> Stellweiche mit Weichenhebel umschalten
 // Stoppstelle: oeffnet automatisch alle STOPP_INTERVALL_MS kurz, solange der Aufzug laeuft.
 //
@@ -58,7 +59,8 @@ const int LAUTSPR_A = 15;      // PWM
 const int LAUTSPR_M6 = 13;     // PWM (Timer TIM12)
 const int LAUTSPR_M6_GND = 12; // bleibt LOW
 
-const int TASTER_L = A5;     // T_L
+const int TASTER_L = A5;     // T_L = Sprechtaste
+const int MIKROFON = A7;     // Mikrofon-Modul, analoger Ausgang
 const int TASTER_M = A4;     // T_M
 const int TASTER_R = A3;     // T_R
 
@@ -249,6 +251,25 @@ void sensorUpdate() {
   if (!kugelDa) {                                 // Kugel hat den Sensor verlassen = durchgerollt
     kugelWeg = millis();
     if (SENSOR_AN) { kugelZaehler++; letzteKugelT = millis(); stau = false; Serial.print("Kugel durch, Zaehler "); Serial.println(kugelZaehler); }
+  }
+}
+
+// ---------- Sprechtaste und Mikrofon ----------
+// Vorerst nur Messung: Pegel des Mikrofons (Min/Max/Spitze-Spitze ueber 200 ms) und ob die Taste gehalten wird.
+// Daran sieht man im Dashboard, ob A7 mit dem Shield echte Werte liefert, bevor die Sprachaufnahme gebaut wird.
+bool sprechen = false;
+int micMin = 4095, micMax = 0, micPP = 0, micMitte = 0;
+unsigned long micT = 0, micSum = 0, micN = 0;
+void sprechtasteUpdate() {
+  bool g = tL.zustand != tL.ruhe;
+  gedrueckt(tL);                                   // Entprellung weiterlaufen lassen
+  g = tL.zustand != tL.ruhe;
+  if (g != sprechen) { sprechen = g; Serial.println(g ? "Sprechtaste gedrueckt" : "Sprechtaste losgelassen"); }
+  int v = analogRead(MIKROFON);
+  micMin = min(micMin, v); micMax = max(micMax, v); micSum += v; micN++;
+  if (millis() - micT >= 200) {
+    micT = millis(); micPP = micMax - micMin; micMitte = micN ? micSum / micN : 0;
+    micMin = 4095; micMax = 0; micSum = 0; micN = 0;
   }
 }
 
@@ -485,7 +506,7 @@ void loop() {
   if (Serial.available()) befehl(Serial.read());
 
   if (gedrueckt(tM)) { Serial.println("Taster MITTE"); setAufzug(!aufzugAn); }
-  if (gedrueckt(tL)) { Serial.println("Taster LINKS"); umschalten(weiche); }
+  sprechtasteUpdate();
   if (gedrueckt(tR)) { Serial.println("Taster RECHTS"); umschalten(hebel); }
 
   stellUpdate(weiche);

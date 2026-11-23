@@ -13,7 +13,7 @@ Ob der Build durchging: Tab **Actions** im Repo. Ist er rot, bleibt der Giga auf
 ## Bedienung
 
 - **Weboberfläche:** Laptop/Handy in den Hotspot „iPhone von mir“, dann die IP aus dem seriellen Monitor im Browser öffnen (bisher `http://172.20.10.2`). Mehrere Geräte gleichzeitig gehen.
-- **Taster:** Mitte (A4) = Aufzug an/aus, links (A5) = Stellweiche, rechts (A3) = Weichenhebel. Beim Einschalten nicht drücken.
+- **Taster:** Mitte (A4) = Aufzug an/aus, links (A5) = **Sprechtaste** (Mikrofon an A7), rechts (A3) = Weichenhebel. Beim Einschalten nicht drücken.
 - **Serieller Monitor** (115200 Baud, `./monitor.command`): `a` Aufzug, `w` Weiche, `h` Hebel, `s` Stoppstelle, `l` LEDs, `x` alles stoppen, `v` Servo-Test, `s` gibt eine Kugel frei (Stoppstelle kurz auf, dann zu), `?` Status, `t`/`m` Taster, `n` WLANs anzeigen, `g` GitHub-Verbindung testen, `u` Update von GitHub sofort laden.
 
 ## Aktoren einstellen
