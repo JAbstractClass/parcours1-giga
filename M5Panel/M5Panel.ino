@@ -94,7 +94,10 @@ float animT = 0; unsigned long animLast = 0;
 const char* MENU_ITEMS[] = {"Status aller Ein-/Ausgaenge", "Manuell steuern", "Betriebsparameter", "Messwerte & Statistik", "Info & Verbindung"};
 const int N_MENU = 5;
 
-bool verbunden() { return S.da && millis() - S.t < 2000; }
+// Der Giga ist bei seiner minuetlichen GitHub-Abfrage ein paar Sekunden still - das ist kein Abbruch.
+// Erst nach 6 s ohne Daten gilt die Verbindung als verloren (der Giga stoppt die Anlage selbst).
+const unsigned long VERLOREN_MS = 6000;
+bool verbunden() { return S.da && millis() - S.t < VERLOREN_MS; }
 
 // ---------- MQTT ----------
 void senden(const char* thema, const String& text) { broker.publish(thema, text); }
@@ -513,9 +516,9 @@ void loop() {
   // Verbindung / Stoerungen melden
   bool ok = verbunden();
   if (ok && !warVerbunden) { verbundenSeit = now; senden("p1/get", "1"); }
-  if (!ok && warVerbunden) { abbrueche++; piepT = 0; }
+  if (!ok && warVerbunden) { abbrueche++; for (int i = 0; i < 3; i++) { M5.Speaker.tone(880, 120); delay(180); } piepT = now; }
   warVerbunden = ok;
-  if (!ok && S.da && now - piepT > 3000) { piepT = now; M5.Speaker.tone(880, 250); }
+  if (!ok && S.da && now - piepT > 60000) { piepT = now; M5.Speaker.tone(880, 120); }   // Erinnerung nur 1x pro Minute
   if (ok && S.ampel == 'r' && letzteAmpel != 'r') { stoerungen++; M5.Speaker.tone(1760, 150); delay(170); M5.Speaker.tone(1760, 150); }
   if (ok) letzteAmpel = S.ampel;
   // Statistik
